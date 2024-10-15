@@ -25,14 +25,28 @@ TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
 # Загрузка специалистов и их проектов
 def load_specialists():
-    with open(SPECIALISTS_FILE, 'r', encoding='utf-8') as file:
-        specialists = json.load(file)['specialists']
-    return sorted(specialists, key=lambda x: x['surname'])
+    try:
+        with open(SPECIALISTS_FILE, 'r', encoding='utf-8') as file:
+            specialists = json.load(file)['specialists']
+        return sorted(specialists, key=lambda x: x['surname'])
+    except FileNotFoundError:
+        logger.error(f"Файл {SPECIALISTS_FILE} не найден.")
+        return []
+    except json.JSONDecodeError:
+        logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
+        return []
 
 # Загрузка задач
 def load_tasks():
-    with open(TASKS_FILE, 'r', encoding='utf-8') as file:
-        return json.load(file)['tasks']
+    try:
+        with open(TASKS_FILE, 'r', encoding='utf-8') as file:
+            return json.load(file)['tasks']
+    except FileNotFoundError:
+        logger.error(f"Файл {TASKS_FILE} не найден.")
+        return []
+    except json.JSONDecodeError:
+        logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
+        return []
 
 # Инициализация базы данных и загрузка задач
 def init_db_and_load_tasks():
