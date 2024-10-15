@@ -4,7 +4,19 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from config import SCOPES, SPREADSHEET_ID, RANGE_NAME, CREDENTIALS_FILE, TOKEN_FILE
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения
+load_dotenv()
+
+# Если вы изменяете эти области, удалите файл token.json.
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
+# Получение конфиденциальных данных из .env
+SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
+RANGE_NAME = os.getenv('RANGE_NAME')
+CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
+TOKEN_FILE = os.getenv('TOKEN_FILE')
 
 def get_credentials():
     creds = None
@@ -26,6 +38,9 @@ def get_credentials():
     return creds
 
 def read_sheet():
+    """
+    Читает данные из Google таблицы.
+    """
     try:
         creds = get_credentials()
         service = build('sheets', 'v4', credentials=creds)
@@ -45,13 +60,19 @@ def read_sheet():
         return None
 
 def write_to_sheet(values):
+    """
+    Записывает данные в Google таблицу на вкладку OPTIMA.
+    :param values: Список списков с данными для записи
+    """
     try:
         creds = get_credentials()
         service = build('sheets', 'v4', credentials=creds)
 
+        # Получаем текущие данные
         result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
         current_values = result.get('values', [])
 
+        # Определяем, куда добавлять новые данные
         next_row = len(current_values) + 1
         range_to_update = f'{RANGE_NAME.split("!")[0]}!A{next_row}'
 
@@ -70,13 +91,21 @@ def write_to_sheet(values):
         print(f"Произошла ошибка при записи в таблицу: {error}")
         return error
 
-if __name__ == '__main__':
+def main():
+    """
+    Основная функция для тестирования.
+    """
+    # Пример чтения данных
     data = read_sheet()
     if data:
         for row in data:
             print(row)
 
+    # Пример записи данных
     new_data = [
         ['1 декабря', 'Test Project', 'Test Task', 'Test User']
     ]
     write_to_sheet(new_data)
+
+if __name__ == '__main__':
+    main()

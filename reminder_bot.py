@@ -1,11 +1,15 @@
 import logging
 import json
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
 import sqlite3
 from datetime import datetime, timedelta
 import quickstart
-from config import BOT_TOKEN, SPECIALISTS_FILE, TASKS_FILE
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения
+load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -13,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 # Состояния для ConversationHandler
 CHOOSING_SPECIALIST = range(1)
+
+# Получение конфиденциальных данных из .env
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
+TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
 # Загрузка специалистов и их проектов
 def load_specialists():
@@ -52,17 +61,15 @@ def init_db_and_load_tasks():
     conn.close()
     logger.info("База данных инициализирована и задачи загружены")
 
-async def show_specialist_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+# Обработчики команд
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     specialists = load_specialists()
     keyboard = [
         [InlineKeyboardButton(spec['surname'], callback_data=f"specialist:{spec['surname']}")]
         for spec in specialists
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if update.message:
-        await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
-    elif update.callback_query:
-        await update.callback_query.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
+    await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
 
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -174,21 +181,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.commit()
     conn.close()
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Операция отменена.")
-    return ConversationHandler.END
-
 def main() -> None:
     init_db_and_load_tasks()
 
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", show_specialist_keyboard), CallbackQueryHandler(show_specialist_keyboard, pattern='^start$')],
+        entry_points=[CommandHandler("start", start)],
         states={
             CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[],
     )
 
     application.add_handler(conv_handler)
