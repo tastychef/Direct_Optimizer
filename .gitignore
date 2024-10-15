@@ -1,5 +1,5 @@
-token.json
-credentials.json
+echo "credentials.json" >> .gitignore
+echo "token.json" >> .gitignore
 tasks.db
 *.pyc
 __pycache__/
