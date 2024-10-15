@@ -1,4 +1,4 @@
-echo "credentials.json" >> .gitignore
-echo "token.json" >> .gitignore
-echo "tasks.db" >> .gitignore
-echo ".env" >> .gitignore
+credentials.json
+token.json
+tasks.db
+.env
