@@ -1,2 +1,5 @@
-credentials.json
 token.json
+credentials.json
+tasks.db
+*.pyc
+__pycache__/
