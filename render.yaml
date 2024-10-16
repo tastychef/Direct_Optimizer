@@ -11,3 +11,5 @@ services:
         sync: false
       - key: BOT_TOKEN
         sync: false
+      - key: SECRET_TOKEN
+        sync: false
