@@ -3,7 +3,6 @@ import json
 import os
 
 import telegram as telegram
-from telegram._update import Update
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
 import sqlite3
@@ -210,29 +209,33 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.close()
 
 def main() -> None:
-    try:
-        init_db()
+    init_db()
 
-        application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).build()
 
-        # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("start", start)],
-            states={
-                CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
-            },
-            fallbacks=[],
+    # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
+        },
+        fallbacks=[],
+    )
+
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(button_callback))
+
+    # ЗАПУСК БОТА
+    if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
+        port = int(os.environ.get('PORT', 10000))
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=os.environ.get("WEBHOOK_URL"),
+            secret_token=os.environ.get("SECRET_TOKEN")
         )
-
-        application.add_handler(conv_handler)
-        application.add_handler(CallbackQueryHandler(button_callback))
-
-        # ЗАПУСК БОТА
+    else:
         application.run_polling()
-    except telegram.error.Conflict:
-        logger.error("Конфликт: обнаружен другой экземпляр бота. Убедитесь, что запущен только один экземпляр.")
-    except Exception as e:
-        logger.error(f"Произошла ошибка: {e}")
 
 if __name__ == '__main__':
     main()
