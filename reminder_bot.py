@@ -1,6 +1,8 @@
 import logging
 import json
 import os
+
+import telegram as telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
 import sqlite3
@@ -99,8 +101,8 @@ def init_tasks_for_specialist(specialist):
 # ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
-        "Привет!\b 😊\nТебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
-        "без которой никак.💪✨\n\nСписок задач с частотой выполнения приложу позже. 🗓️ Если нужно что-то изменить или добавить, дай знать!🌟"
+        "Привет! 😊 Тебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
+        "без которой никак. 💪✨ Список задач с периодом приложу позже. 🗓️ Если нужно что-то изменить или добавить, дай знать! 🌟"
     )
     await update.message.reply_text(welcome_message)
 
@@ -110,7 +112,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         for spec in specialists
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('А теперь пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
+    await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
 
 
@@ -201,7 +203,15 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except telegram.error.BadRequest as e:
+        if "Query is too old" in str(e):
+            await update.effective_message.reply_text(
+                "Это сообщение устарело. Пожалуйста, дождитесь следующего напоминания.")
+            return
+        else:
+            raise
 
     if query.data.startswith("specialist:"):
         return await specialist_choice(update, context)
@@ -245,6 +255,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
+    if isinstance(context.error, telegram.error.BadRequest) and "Query is too old" in str(context.error):
+        if update.callback_query:
+            update.callback_query.answer()
+            update.effective_message.reply_text("Это сообщение устарело. Пожалуйста, дождитесь следующего напоминания.")
 
 
 def main() -> None:
