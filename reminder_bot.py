@@ -1,6 +1,9 @@
 import logging
 import json
 import os
+
+import telegram as telegram
+from telegram._update import Update
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
 import sqlite3
@@ -207,24 +210,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.close()
 
 def main() -> None:
-    init_db()  # Теперь только инициализируем базу данных, без загрузки задач
+    try:
+        init_db()
 
-    application = Application.builder().token(BOT_TOKEN).build()
+        application = Application.builder().token(BOT_TOKEN).build()
 
-    # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
-        },
-        fallbacks=[],
-    )
+        # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("start", start)],
+            states={
+                CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
+            },
+            fallbacks=[],
+        )
 
-    application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(button_callback))
+        application.add_handler(conv_handler)
+        application.add_handler(CallbackQueryHandler(button_callback))
 
-    # ЗАПУСК БОТА
-    application.run_polling()
+        # ЗАПУСК БОТА
+        application.run_polling()
+    except telegram.error.Conflict:
+        logger.error("Конфликт: обнаружен другой экземпляр бота. Убедитесь, что запущен только один экземпляр.")
+    except Exception as e:
+        logger.error(f"Произошла ошибка: {e}")
 
 if __name__ == '__main__':
     main()
