@@ -189,8 +189,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # ЗАПИСЬ В GOOGLE SHEETS
         try:
             surname = context.user_data.get('surname', 'Неизвестный')
-            quickstart.write_to_sheet([[surname, project, task, datetime.now().strftime('%d.%m')]])
-            logger.info(f"Данные успешно записаны в Google Sheets: {surname}, {project}, {task}")
+            result = quickstart.write_to_sheet([[surname, project, task, datetime.now().strftime('%d.%m')]])
+            if isinstance(result, dict) and result.get('updates'):
+                logger.info(f"Данные успешно записаны в Google Sheets: {surname}, {project}, {task}")
+            else:
+                logger.error(f"Неожиданный результат при записи в Google Sheets: {result}")
         except Exception as e:
             logger.error(f"Ошибка при записи в Google Sheets: {e}")
             logger.exception("Полное описание ошибки:")

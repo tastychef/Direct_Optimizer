@@ -2,7 +2,7 @@ import os
 import json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build, logger
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 
@@ -21,7 +21,7 @@ def get_credentials():
             token_data = json.loads(token_json)
             creds = Credentials.from_authorized_user_info(token_data, SCOPES)
         except json.JSONDecodeError:
-            print("Ошибка при разборе JSON из GOOGLE_TOKEN")
+            logger.error("Ошибка при разборе JSON из GOOGLE_TOKEN")
             raise ValueError("Invalid JSON in GOOGLE_TOKEN environment variable")
 
     if not creds or not creds.valid:
@@ -31,10 +31,13 @@ def get_credentials():
             raise ValueError("Invalid credentials. Please update GOOGLE_TOKEN in .env file.")
     return creds
 
+
 def write_to_sheet(values):
     try:
         creds = get_credentials()
+        logger.info("Credentials получены успешно")
         service = build('sheets', 'v4', credentials=creds)
+        logger.info("Сервис Google Sheets создан")
 
         body = {
             'values': values
@@ -45,11 +48,12 @@ def write_to_sheet(values):
             valueInputOption='USER_ENTERED',
             body=body).execute()
 
-        print(f"Данные добавлены на вкладку {RANGE_NAME}. Обновлено ячеек: {result.get('updates').get('updatedCells')}")
+        logger.info(f"Запрос к API выполнен. Результат: {result}")
         return result
-    except HttpError as error:
-        print(f"Произошла ошибка при записи в таблицу: {error}")
-        return error
+    except Exception as e:
+        logger.error(f"Ошибка в write_to_sheet: {e}")
+        logger.exception("Полное описание ошибки:")
+        raise
 
 if __name__ == '__main__':
     # Пример использования
