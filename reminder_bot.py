@@ -207,7 +207,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.close()
 
 def main() -> None:
-    init_db()  # Теперь только инициализируем базу данных, без загрузки задач
+    init_db()
 
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -224,7 +224,14 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_callback))
 
     # ЗАПУСК БОТА
-    application.run_polling()
+    if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", 10000)),
+            webhook_url=os.environ.get("WEBHOOK_URL")
+        )
+    else:
+        application.run_polling()
 
 if __name__ == '__main__':
     main()

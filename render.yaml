@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: reminder-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python reminder_bot.py
+    envVars:
+      - key: ENVIRONMENT
+        value: PRODUCTION
+      - key: WEBHOOK_URL
+        value: https://Direct_Optimizer.onrender.com/webhook
+      - key: BOT_TOKEN
+        sync: false
