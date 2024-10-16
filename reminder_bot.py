@@ -9,6 +9,7 @@ import quickstart
 from dotenv import load_dotenv
 import warnings
 from telegram.warnings import PTBUserWarning
+import asyncio
 
 warnings.filterwarnings("ignore", category=PTBUserWarning)
 
@@ -68,6 +69,10 @@ def init_db():
     c.execute('''CREATE TABLE sent_reminders
                  (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
 
+    # Добавление индексов для оптимизации запросов
+    c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
+    c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
+
     conn.commit()
     conn.close()
     logger.info("База данных инициализирована")
@@ -93,13 +98,19 @@ def init_tasks_for_specialist(specialist):
 
 # ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    welcome_message = (
+        "Привет!\b 😊\nТебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
+        "без которой никак.💪✨\n\nСписок задач с частотой выполнения приложу позже. 🗓️ Если нужно что-то изменить или добавить, дай знать!🌟"
+    )
+    await update.message.reply_text(welcome_message)
+
     specialists = load_specialists()
     keyboard = [
         [InlineKeyboardButton(spec['surname'], callback_data=f"specialist:{spec['surname']}")]
         for spec in specialists
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
+    await update.message.reply_text('А теперь пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
 
 
@@ -154,36 +165,38 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
 
-    c.execute("""
+    projects = context.job.data['projects']
+    placeholders = ','.join('?' for _ in projects)
+
+    c.execute(f"""
         SELECT t.id, t.project, t.task 
         FROM tasks t
         LEFT JOIN sent_reminders sr ON t.id = sr.task_id
         WHERE t.next_reminder <= ? AND (sr.sent_at IS NULL OR (sr.sent_at < t.next_reminder AND sr.responded = 0))
-    """, (now.isoformat(),))
+        AND t.project IN ({placeholders})
+    """, (now.isoformat(), *projects))
+
     tasks = c.fetchall()
 
     logger.info(f"Найдено задач для напоминания: {len(tasks)}")
 
+    reminders = []
     for task_id, project, task in tasks:
-        if project in context.job.data['projects']:
-            try:
-                c.execute("SELECT sent_at FROM sent_reminders WHERE task_id = ?", (task_id,))
-                last_sent = c.fetchone()
+        c.execute("SELECT sent_at FROM sent_reminders WHERE task_id = ?", (task_id,))
+        last_sent = c.fetchone()
 
-                if last_sent is None or (now - datetime.fromisoformat(last_sent[0])).total_seconds() > 60:
-                    await send_reminder_with_buttons(context, context.job.data['chat_id'], project, task, task_id)
-                    logger.info(f"Отправлено напоминание для проекта {project}, задача: {task}")
-
-                    c.execute("INSERT OR REPLACE INTO sent_reminders (task_id, sent_at, responded) VALUES (?, ?, ?)",
-                              (task_id, now.isoformat(), 0))
-                else:
-                    logger.info(
-                        f"Пропущено напоминание для проекта {project}, задача: {task} (отправлено менее минуты назад)")
-            except Exception as e:
-                logger.warning(f"Ошибка при отправке напоминания: {e}")
+        if last_sent is None or (now - datetime.fromisoformat(last_sent[0])).total_seconds() > 3600:
+            reminders.append((context.job.data['chat_id'], project, task, task_id))
+            c.execute("INSERT OR REPLACE INTO sent_reminders (task_id, sent_at, responded) VALUES (?, ?, ?)",
+                      (task_id, now.isoformat(), 0))
+        else:
+            logger.info(f"Пропущено напоминание для проекта {project}, задача: {task} (отправлено менее часа назад)")
 
     conn.commit()
     conn.close()
+
+    # Асинхронная отправка напоминаний
+    await asyncio.gather(*[send_reminder_with_buttons(context, *reminder) for reminder in reminders])
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -230,6 +243,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.close()
 
 
+def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error(f"Exception while handling an update: {context.error}")
+
+
 def main() -> None:
     init_db()
 
@@ -246,6 +263,7 @@ def main() -> None:
 
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_error_handler(error_handler)
 
     # ЗАПУСК БОТА
     if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
