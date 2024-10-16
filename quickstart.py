@@ -59,6 +59,7 @@ def write_to_sheet(values):
         logger.error(f"Произошла ошибка при записи в таблицу: {error}")
         return error
 
+
 if __name__ == '__main__':
     # Пример использования
     test_data = [['Тестовая запись', 'Проект', 'Задача', '01.01.2023']]

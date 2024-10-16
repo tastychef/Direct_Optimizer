@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import time
 
 import telegram as telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -30,7 +31,6 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
-
 # ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
     try:
@@ -44,7 +44,6 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
-
 # ЗАГРУЗКА ЗАДАЧ
 def load_tasks():
     try:
@@ -56,7 +55,6 @@ def load_tasks():
     except json.JSONDecodeError:
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
-
 
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 def init_db():
@@ -79,7 +77,6 @@ def init_db():
     conn.close()
     logger.info("База данных инициализирована")
 
-
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
 def init_tasks_for_specialist(specialist):
     conn = sqlite3.connect('tasks.db')
@@ -97,12 +94,11 @@ def init_tasks_for_specialist(specialist):
     conn.close()
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
-
 # ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
-        "Привет! 😊 Тебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
-        "без которой никак. 💪✨ Список задач с периодом приложу позже. 🗓️ Если нужно что-то изменить или добавить, дай знать! 🌟"
+        "Привет! 😊\nТебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
+        "без которой никак. 💪✨\n\nСписок задач с периодом приложу позже. 🗓️ Если нужно что-то изменить или добавить, дай знать! 🌟"
     )
     await update.message.reply_text(welcome_message)
 
@@ -114,7 +110,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
-
 
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -144,22 +139,20 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
         return ConversationHandler.END
 
-
-async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str,
-                                     task_id: int) -> None:
+async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str, task_id: int) -> None:
+    current_time = int(time.time())
     keyboard = [
         [
-            InlineKeyboardButton("✅ Взял(а) в работу", callback_data=f"work:{task_id}"),
-            InlineKeyboardButton("⏰ Напомни через 2 часа", callback_data=f"later:{task_id}")
+            InlineKeyboardButton("✅ Сегодня сделаю!", callback_data=f"work:{task_id}:{current_time}"),
+            InlineKeyboardButton("⏰ Напомни завтра", callback_data=f"later:{task_id}:{current_time}")
         ],
         [
-            InlineKeyboardButton("📅 Напомни завтра", callback_data=f"tomorrow:{task_id}")
+            InlineKeyboardButton("📅 Напомни через неделю", callback_data=f"tomorrow:{task_id}:{current_time}"),
+            InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh:{task_id}:{current_time}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup,
-                                   parse_mode='Markdown')
-
+    await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup, parse_mode='Markdown')
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
@@ -200,23 +193,18 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     # Асинхронная отправка напоминаний
     await asyncio.gather(*[send_reminder_with_buttons(context, *reminder) for reminder in reminders])
 
-
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     try:
         await query.answer()
     except telegram.error.BadRequest as e:
         if "Query is too old" in str(e):
-            await update.effective_message.reply_text(
-                "Это сообщение устарело. Пожалуйста, дождитесь следующего напоминания.")
+            await update.effective_message.edit_text("Это сообщение устарело. Пожалуйста, используйте кнопку 'Обновить'.")
             return
         else:
             raise
 
-    if query.data.startswith("specialist:"):
-        return await specialist_choice(update, context)
-
-    action, task_id = query.data.split(':')
+    action, task_id, _ = query.data.split(':')
     task_id = int(task_id)
 
     conn = sqlite3.connect('tasks.db')
@@ -228,7 +216,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         next_reminder = datetime.now() + timedelta(seconds=interval)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"✅ Отлично! Вы взяли задачу в работу.")
+        await query.edit_message_text(text=f"✅ Отлично! Вы решили сделать задачу сегодня.")
 
         # ЗАПИСЬ В GOOGLE SHEETS
         try:
@@ -239,32 +227,35 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.error(f"Ошибка при записи в Google Sheets: {e}")
 
     elif action == "later":
-        next_reminder = datetime.now() + timedelta(hours=2)
-        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
-        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"⏳ Хорошо, я напомню вам об этой задаче через 2 часа.")
-    elif action == "tomorrow":
         next_reminder = datetime.now() + timedelta(days=1)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче завтра.")
+        await query.edit_message_text(text=f"⏳ Хорошо, я напомню вам об этой задаче завтра.")
+    elif action == "tomorrow":
+        next_reminder = datetime.now() + timedelta(weeks=1)
+        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
+        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
+        await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче через неделю.")
+    elif action == "refresh":
+        c.execute("SELECT project, task FROM tasks WHERE id = ?", (task_id,))
+        project, task = c.fetchone()
+        await send_reminder_with_buttons(context, query.message.chat_id, project, task, task_id)
+        await query.message.delete()
 
     conn.commit()
     conn.close()
-
 
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
     if isinstance(context.error, telegram.error.BadRequest) and "Query is too old" in str(context.error):
         if update.callback_query:
             update.callback_query.answer()
-            update.effective_message.reply_text("Это сообщение устарело. Пожалуйста, дождитесь следующего напоминания.")
-
+            update.effective_message.reply_text("Это сообщение устарело. Пожалуйста, используйте кнопку 'Обновить'.")
 
 def main() -> None:
     init_db()
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).arbitrary_callback_data(True).build()
 
     # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
     conv_handler = ConversationHandler(
@@ -290,7 +281,6 @@ def main() -> None:
         )
     else:
         application.run_polling()
-
 
 if __name__ == '__main__':
     main()
