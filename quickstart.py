@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Загрузка переменных окружения
 load_dotenv()
 
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -54,16 +55,15 @@ def write_to_sheet(values):
 
         logger.info(f"Запрос к API выполнен. Результат: {result}")
         return result
-    except Exception as e:
-        logger.error(f"Ошибка в write_to_sheet: {e}")
-        logger.exception("Полное описание ошибки:")
-        return None
+    except HttpError as error:
+        logger.error(f"Произошла ошибка при записи в таблицу: {error}")
+        return error
 
 if __name__ == '__main__':
     # Пример использования
     test_data = [['Тестовая запись', 'Проект', 'Задача', '01.01.2023']]
     result = write_to_sheet(test_data)
-    if result:
+    if isinstance(result, dict):
         print("Данные успешно записаны в таблицу")
     else:
         print("Произошла ошибка при записи данных")

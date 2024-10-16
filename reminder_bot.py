@@ -7,6 +7,10 @@ import sqlite3
 from datetime import datetime, timedelta
 import quickstart
 from dotenv import load_dotenv
+import warnings
+from telegram.warnings import PTBUserWarning
+
+warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 # ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 load_dotenv()
@@ -23,6 +27,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
+
 # ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
     try:
@@ -36,6 +41,7 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
+
 # ЗАГРУЗКА ЗАДАЧ
 def load_tasks():
     try:
@@ -48,6 +54,7 @@ def load_tasks():
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
 
+
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 def init_db():
     conn = sqlite3.connect('tasks.db')
@@ -59,11 +66,12 @@ def init_db():
     c.execute('''CREATE TABLE tasks
                  (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
     c.execute('''CREATE TABLE sent_reminders
-                 (task_id INTEGER, sent_at TEXT, PRIMARY KEY (task_id))''')
+                 (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
 
     conn.commit()
     conn.close()
     logger.info("База данных инициализирована")
+
 
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
 def init_tasks_for_specialist(specialist):
@@ -82,6 +90,7 @@ def init_tasks_for_specialist(specialist):
     conn.close()
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
+
 # ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     specialists = load_specialists()
@@ -92,6 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
+
 
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -112,15 +122,18 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         init_tasks_for_specialist(specialist)
 
         # ЗАПУСК ПРОВЕРКИ НАПОМИНАНИЙ
-        context.job_queue.run_repeating(check_reminders, interval=1, first=1,
-                                        data={'projects': specialist['projects'], 'chat_id': query.message.chat_id, 'surname': specialist['surname']})
+        context.job_queue.run_repeating(check_reminders, interval=10, first=1,
+                                        data={'projects': specialist['projects'], 'chat_id': query.message.chat_id,
+                                              'surname': specialist['surname']})
 
         return ConversationHandler.END
     else:
         await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
         return ConversationHandler.END
 
-async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str, task_id: int) -> None:
+
+async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str,
+                                     task_id: int) -> None:
     keyboard = [
         [
             InlineKeyboardButton("✅ Взял(а) в работу", callback_data=f"work:{task_id}"),
@@ -131,7 +144,9 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup, parse_mode='Markdown')
+    await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup,
+                                   parse_mode='Markdown')
+
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
@@ -143,7 +158,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         SELECT t.id, t.project, t.task 
         FROM tasks t
         LEFT JOIN sent_reminders sr ON t.id = sr.task_id
-        WHERE t.next_reminder <= ? AND (sr.sent_at IS NULL OR sr.sent_at < t.next_reminder)
+        WHERE t.next_reminder <= ? AND (sr.sent_at IS NULL OR (sr.sent_at < t.next_reminder AND sr.responded = 0))
     """, (now.isoformat(),))
     tasks = c.fetchall()
 
@@ -152,16 +167,24 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     for task_id, project, task in tasks:
         if project in context.job.data['projects']:
             try:
-                await send_reminder_with_buttons(context, context.job.data['chat_id'], project, task, task_id)
-                logger.info(f"Отправлено напоминание для проекта {project}, задача: {task}")
+                c.execute("SELECT sent_at FROM sent_reminders WHERE task_id = ?", (task_id,))
+                last_sent = c.fetchone()
 
-                c.execute("INSERT OR REPLACE INTO sent_reminders (task_id, sent_at) VALUES (?, ?)",
-                          (task_id, now.isoformat()))
+                if last_sent is None or (now - datetime.fromisoformat(last_sent[0])).total_seconds() > 60:
+                    await send_reminder_with_buttons(context, context.job.data['chat_id'], project, task, task_id)
+                    logger.info(f"Отправлено напоминание для проекта {project}, задача: {task}")
+
+                    c.execute("INSERT OR REPLACE INTO sent_reminders (task_id, sent_at, responded) VALUES (?, ?, ?)",
+                              (task_id, now.isoformat(), 0))
+                else:
+                    logger.info(
+                        f"Пропущено напоминание для проекта {project}, задача: {task} (отправлено менее минуты назад)")
             except Exception as e:
-                logger.error(f"Ошибка при отправке напоминания: {e}")
+                logger.warning(f"Ошибка при отправке напоминания: {e}")
 
     conn.commit()
     conn.close()
+
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -181,7 +204,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         interval, project, task = c.fetchone()
         next_reminder = datetime.now() + timedelta(seconds=interval)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
-        c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
+        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"✅ Отлично! Вы взяли задачу в работу.")
 
         # ЗАПИСЬ В GOOGLE SHEETS
@@ -195,19 +218,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif action == "later":
         next_reminder = datetime.now() + timedelta(hours=2)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
-        c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
+        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"⏳ Хорошо, я напомню вам об этой задаче через 2 часа.")
     elif action == "tomorrow":
         next_reminder = datetime.now() + timedelta(days=1)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
-        c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
+        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче завтра.")
 
     conn.commit()
     conn.close()
 
+
 def main() -> None:
-    init_db()  # Теперь только инициализируем базу данных, без загрузки задач
+    init_db()
 
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -234,6 +258,7 @@ def main() -> None:
         )
     else:
         application.run_polling()
+
 
 if __name__ == '__main__':
     main()
