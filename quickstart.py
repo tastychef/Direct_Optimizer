@@ -1,10 +1,15 @@
 import os
 import json
+import logging
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build, logger
+from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -31,7 +36,6 @@ def get_credentials():
             raise ValueError("Invalid credentials. Please update GOOGLE_TOKEN in .env file.")
     return creds
 
-
 def write_to_sheet(values):
     try:
         creds = get_credentials()
@@ -53,9 +57,13 @@ def write_to_sheet(values):
     except Exception as e:
         logger.error(f"Ошибка в write_to_sheet: {e}")
         logger.exception("Полное описание ошибки:")
-        raise
+        return None
 
 if __name__ == '__main__':
     # Пример использования
     test_data = [['Тестовая запись', 'Проект', 'Задача', '01.01.2023']]
-    write_to_sheet(test_data)
+    result = write_to_sheet(test_data)
+    if result:
+        print("Данные успешно записаны в таблицу")
+    else:
+        print("Произошла ошибка при записи данных")

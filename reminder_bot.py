@@ -224,6 +224,7 @@ def main() -> None:
             CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
         },
         fallbacks=[],
+        per_message=True
     )
 
     application.add_handler(conv_handler)
