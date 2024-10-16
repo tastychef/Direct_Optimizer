@@ -3,8 +3,7 @@ import json
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
-import psycopg2
-from psycopg2 import sql
+import sqlite3
 from datetime import datetime, timedelta
 import quickstart
 from dotenv import load_dotenv
@@ -23,20 +22,6 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-DB_NAME = os.getenv('DB_NAME')
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
-DB_HOST = os.getenv('DB_HOST')
-DB_PORT = os.getenv('DB_PORT')
-
-def get_db_connection():
-    return psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT
-    )
 
 # ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
@@ -65,37 +50,35 @@ def load_tasks():
 
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
 
-    cur.execute("DROP TABLE IF EXISTS tasks")
-    cur.execute("DROP TABLE IF EXISTS sent_reminders")
+    c.execute("DROP TABLE IF EXISTS tasks")
+    c.execute("DROP TABLE IF EXISTS sent_reminders")
 
-    cur.execute('''CREATE TABLE tasks
-                 (id SERIAL PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TIMESTAMP)''')
-    cur.execute('''CREATE TABLE sent_reminders
-                 (task_id INTEGER PRIMARY KEY, sent_at TIMESTAMP)''')
+    c.execute('''CREATE TABLE tasks
+                 (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
+    c.execute('''CREATE TABLE sent_reminders
+                 (task_id INTEGER, sent_at TEXT, PRIMARY KEY (task_id))''')
 
     conn.commit()
-    cur.close()
     conn.close()
     logger.info("База данных инициализирована")
 
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
 def init_tasks_for_specialist(specialist):
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
 
     tasks = load_tasks()
 
     for project in specialist['projects']:
         for task in tasks:
             next_reminder = datetime.now() + timedelta(seconds=task['interval_seconds'])
-            cur.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (%s, %s, %s, %s)",
-                        (project, task['task'], task['interval_seconds'], next_reminder))
+            c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
+                      (project, task['task'], task['interval_seconds'], next_reminder.isoformat()))
 
     conn.commit()
-    cur.close()
     conn.close()
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
@@ -153,16 +136,16 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
     logger.info(f"Проверка напоминаний в {now}")
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
 
-    cur.execute("""
+    c.execute("""
         SELECT t.id, t.project, t.task 
         FROM tasks t
         LEFT JOIN sent_reminders sr ON t.id = sr.task_id
-        WHERE t.next_reminder <= %s AND (sr.sent_at IS NULL OR sr.sent_at < t.next_reminder)
-    """, (now,))
-    tasks = cur.fetchall()
+        WHERE t.next_reminder <= ? AND (sr.sent_at IS NULL OR sr.sent_at < t.next_reminder)
+    """, (now.isoformat(),))
+    tasks = c.fetchall()
 
     logger.info(f"Найдено задач для напоминания: {len(tasks)}")
 
@@ -172,13 +155,12 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 await send_reminder_with_buttons(context, context.job.data['chat_id'], project, task, task_id)
                 logger.info(f"Отправлено напоминание для проекта {project}, задача: {task}")
 
-                cur.execute("INSERT INTO sent_reminders (task_id, sent_at) VALUES (%s, %s) ON CONFLICT (task_id) DO UPDATE SET sent_at = EXCLUDED.sent_at",
-                            (task_id, now))
+                c.execute("INSERT OR REPLACE INTO sent_reminders (task_id, sent_at) VALUES (?, ?)",
+                          (task_id, now.isoformat()))
             except Exception as e:
                 logger.error(f"Ошибка при отправке напоминания: {e}")
 
     conn.commit()
-    cur.close()
     conn.close()
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -191,15 +173,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     action, task_id = query.data.split(':')
     task_id = int(task_id)
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
 
     if action == "work":
-        cur.execute("SELECT interval, project, task FROM tasks WHERE id = %s", (task_id,))
-        interval, project, task = cur.fetchone()
+        c.execute("SELECT interval, project, task FROM tasks WHERE id = ?", (task_id,))
+        interval, project, task = c.fetchone()
         next_reminder = datetime.now() + timedelta(seconds=interval)
-        cur.execute("UPDATE tasks SET next_reminder = %s WHERE id = %s", (next_reminder, task_id))
-        cur.execute("DELETE FROM sent_reminders WHERE task_id = %s", (task_id,))
+        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
+        c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"✅ Отлично! Вы взяли задачу в работу.")
 
         # ЗАПИСЬ В GOOGLE SHEETS
@@ -212,17 +194,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif action == "later":
         next_reminder = datetime.now() + timedelta(hours=2)
-        cur.execute("UPDATE tasks SET next_reminder = %s WHERE id = %s", (next_reminder, task_id))
-        cur.execute("DELETE FROM sent_reminders WHERE task_id = %s", (task_id,))
+        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
+        c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"⏳ Хорошо, я напомню вам об этой задаче через 2 часа.")
     elif action == "tomorrow":
         next_reminder = datetime.now() + timedelta(days=1)
-        cur.execute("UPDATE tasks SET next_reminder = %s WHERE id = %s", (next_reminder, task_id))
-        cur.execute("DELETE FROM sent_reminders WHERE task_id = %s", (task_id,))
+        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
+        c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче завтра.")
 
     conn.commit()
-    cur.close()
     conn.close()
 
 def main() -> None:
@@ -237,23 +218,13 @@ def main() -> None:
             CHOOSING_SPECIALIST: [CallbackQueryHandler(specialist_choice, pattern=r'^specialist:')],
         },
         fallbacks=[],
-        per_message=True
     )
 
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button_callback))
 
     # ЗАПУСК БОТА
-    if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
-        port = int(os.environ.get('PORT', 10000))
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            webhook_url=os.environ.get("WEBHOOK_URL"),
-            secret_token=os.environ.get("SECRET_TOKEN")
-        )
-    else:
-        application.run_polling()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
