@@ -8,22 +8,22 @@ from datetime import datetime, timedelta
 import quickstart
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения
+# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 load_dotenv()
 
-# Настройка логирования
+# НАСТРОЙКА ЛОГИРОВАНИЯ
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Состояния для ConversationHandler
+# СОСТОЯНИЯ ДЛЯ CONVERSATIONHANDLER
 CHOOSING_SPECIALIST = range(1)
 
-# Получение конфиденциальных данных из .env
+# ПОЛУЧЕНИЕ КОНФИДЕНЦИАЛЬНЫХ ДАННЫХ ИЗ .ENV
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
-# Загрузка специалистов и их проектов
+# ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
     try:
         with open(SPECIALISTS_FILE, 'r', encoding='utf-8') as file:
@@ -36,7 +36,7 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
-# Загрузка задач
+# ЗАГРУЗКА ЗАДАЧ
 def load_tasks():
     try:
         with open(TASKS_FILE, 'r', encoding='utf-8') as file:
@@ -48,8 +48,8 @@ def load_tasks():
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
 
-# Инициализация базы данных и загрузка задач
-def init_db_and_load_tasks():
+# ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
+def init_db():
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
 
@@ -61,21 +61,28 @@ def init_db_and_load_tasks():
     c.execute('''CREATE TABLE sent_reminders
                  (task_id INTEGER, sent_at TEXT, PRIMARY KEY (task_id))''')
 
-    tasks = load_tasks()
-    specialists = load_specialists()
+    conn.commit()
+    conn.close()
+    logger.info("База данных инициализирована")
 
-    for specialist in specialists:
-        for project in specialist['projects']:
-            for task in tasks:
-                next_reminder = datetime.now() + timedelta(seconds=task['interval_seconds'])
-                c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                          (project, task['task'], task['interval_seconds'], next_reminder.isoformat()))
+# ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
+def init_tasks_for_specialist(specialist):
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+
+    tasks = load_tasks()
+
+    for project in specialist['projects']:
+        for task in tasks:
+            next_reminder = datetime.now() + timedelta(seconds=task['interval_seconds'])
+            c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
+                      (project, task['task'], task['interval_seconds'], next_reminder.isoformat()))
 
     conn.commit()
     conn.close()
-    logger.info("База данных инициализирована и задачи загружены")
+    logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
-# Обработчики команд
+# ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     specialists = load_specialists()
     keyboard = [
@@ -101,6 +108,10 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
         await query.edit_message_text(f"*ВАШИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
 
+        # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ ВЫБРАННОГО СПЕЦИАЛИСТА
+        init_tasks_for_specialist(specialist)
+
+        # ЗАПУСК ПРОВЕРКИ НАПОМИНАНИЙ
         context.job_queue.run_repeating(check_reminders, interval=1, first=1,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id, 'surname': specialist['surname']})
 
@@ -173,7 +184,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         c.execute("DELETE FROM sent_reminders WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"✅ Отлично! Вы взяли задачу в работу.")
 
-        # Запись в Google Sheets
+        # ЗАПИСЬ В GOOGLE SHEETS
         try:
             surname = context.user_data.get('surname', 'Неизвестный')
             quickstart.write_to_sheet([[surname, project, task, datetime.now().strftime('%d.%m')]])
@@ -196,10 +207,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.close()
 
 def main() -> None:
-    init_db_and_load_tasks()
+    init_db()  # Теперь только инициализируем базу данных, без загрузки задач
 
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -211,6 +223,7 @@ def main() -> None:
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button_callback))
 
+    # ЗАПУСК БОТА
     application.run_polling()
 
 if __name__ == '__main__':
