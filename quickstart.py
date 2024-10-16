@@ -6,18 +6,21 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 
+# Загрузка переменных окружения
 load_dotenv()
 
+# Определение области доступа
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
+# Получение ID таблицы и диапазона из переменных окружения
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 RANGE_NAME = os.getenv('RANGE_NAME')
 
 def get_credentials():
     creds = None
-    token_json = os.getenv('GOOGLE_TOKEN')
-    if token_json:
-        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+    token_path = os.getenv('GOOGLE_TOKEN')
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -40,7 +43,7 @@ def write_to_sheet(values):
             valueInputOption='USER_ENTERED',
             body=body).execute()
 
-        print(f"Данные добавлены на вкладку OPTIMA. Обновлено ячеек: {result.get('updates').get('updatedCells')}")
+        print(f"Данные добавлены на вкладку {RANGE_NAME}. Обновлено ячеек: {result.get('updates').get('updatedCells')}")
         return result
     except HttpError as error:
         print(f"Произошла ошибка при записи в таблицу: {error}")
