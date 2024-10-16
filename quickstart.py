@@ -6,21 +6,23 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения
 load_dotenv()
 
-# Определение области доступа
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-# Получение ID таблицы и диапазона из переменных окружения
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 RANGE_NAME = os.getenv('RANGE_NAME')
 
 def get_credentials():
     creds = None
-    token_path = os.getenv('GOOGLE_TOKEN')
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    token_json = os.getenv('GOOGLE_TOKEN')
+    if token_json:
+        try:
+            token_data = json.loads(token_json)
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        except json.JSONDecodeError:
+            print("Ошибка при разборе JSON из GOOGLE_TOKEN")
+            raise ValueError("Invalid JSON in GOOGLE_TOKEN environment variable")
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:

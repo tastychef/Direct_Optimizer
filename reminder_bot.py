@@ -193,6 +193,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.info(f"Данные успешно записаны в Google Sheets: {surname}, {project}, {task}")
         except Exception as e:
             logger.error(f"Ошибка при записи в Google Sheets: {e}")
+            logger.exception("Полное описание ошибки:")
 
     elif action == "later":
         next_reminder = datetime.now() + timedelta(hours=2)
