@@ -231,7 +231,7 @@ def main() -> None:
             listen="0.0.0.0",
             port=port,
             webhook_url=os.environ.get("WEBHOOK_URL"),
-            secret_token=os.environ.get("SECRET_TOKEN")  # Добавьте эту строку
+            secret_token=os.environ.get("SECRET_TOKEN")
         )
     else:
         application.run_polling()
