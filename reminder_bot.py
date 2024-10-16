@@ -1,3 +1,4 @@
+import os
 import logging
 import json
 import os
@@ -225,9 +226,10 @@ def main() -> None:
 
     # ЗАПУСК БОТА
     if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
+        port = int(os.environ.get('PORT', 10000))
         application.run_webhook(
             listen="0.0.0.0",
-            port=int(os.environ.get("PORT", 10000)),
+            port=port,
             webhook_url=os.environ.get("WEBHOOK_URL")
         )
     else:

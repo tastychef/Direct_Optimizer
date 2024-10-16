@@ -8,6 +8,6 @@ services:
       - key: ENVIRONMENT
         value: PRODUCTION
       - key: WEBHOOK_URL
-        value: https://Direct_Optimizer.onrender.com/webhook
+        sync: false
       - key: BOT_TOKEN
         sync: false
