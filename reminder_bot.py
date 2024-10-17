@@ -221,24 +221,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
 
-    action, button_id = query.data.split(':')
+    data_parts = query.data.split(':')
+    action = data_parts[0]
+
+    if action == "specialist":
+        return await specialist_choice(update, context)
+
+    task_id = int(data_parts[1])
+    button_id = ':'.join(data_parts[1:]) if len(data_parts) > 2 else None
 
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
 
-    c.execute("SELECT task_id, project, task FROM button_data WHERE button_id = ?", (button_id,))
-    result = c.fetchone()
-
-    if result is None:
-        await query.edit_message_text("Это напоминание устарело. Пожалуйста, дождитесь следующего.")
-        conn.close()
-        return
-
-    task_id, project, task = result
-
     if action == "work":
-        c.execute("SELECT interval FROM tasks WHERE id = ?", (task_id,))
-        interval = c.fetchone()[0]
+        c.execute("SELECT interval, project, task FROM tasks WHERE id = ?", (task_id,))
+        interval, project, task = c.fetchone()
         next_reminder = datetime.now() + timedelta(seconds=interval)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
@@ -263,6 +260,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче через неделю.")
     elif action == "refresh":
+        c.execute("SELECT project, task FROM tasks WHERE id = ?", (task_id,))
+        project, task = c.fetchone()
         await send_reminder_with_buttons(context, query.message.chat_id, project, task, task_id)
         await query.message.delete()
 
@@ -284,10 +283,11 @@ async def clean_old_button_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
     if isinstance(context.error, telegram.error.BadRequest) and "Query is too old" in str(context.error):
-        if update.callback_query:
+        if update and update.callback_query:
             update.callback_query.answer()
             update.effective_message.reply_text("Это сообщение устарело. Пожалуйста, дождитесь следующего напоминания.")
-
+    elif update:
+        update.message.reply_text("Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз.")
 
 def main() -> None:
     init_db()
