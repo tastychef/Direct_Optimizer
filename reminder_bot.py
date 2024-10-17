@@ -63,15 +63,19 @@ def init_db():
 
     c.execute("DROP TABLE IF EXISTS tasks")
     c.execute("DROP TABLE IF EXISTS sent_reminders")
+    c.execute("DROP TABLE IF EXISTS button_states")
 
     c.execute('''CREATE TABLE tasks
                  (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
     c.execute('''CREATE TABLE sent_reminders
                  (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
+    c.execute('''CREATE TABLE button_states
+                 (button_id TEXT PRIMARY KEY, task_id INTEGER, project TEXT, task TEXT, created_at INTEGER)''')
 
     # Добавление индексов для оптимизации запросов
     c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
     c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
+    c.execute("CREATE INDEX idx_button_states_created_at ON button_states(created_at)")
 
     conn.commit()
     conn.close()
@@ -140,19 +144,28 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return ConversationHandler.END
 
 async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str, task_id: int) -> None:
-    current_time = int(time.time())
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+
+    button_id = f"{task_id}:{int(time.time())}"
+    c.execute("INSERT INTO button_states (button_id, task_id, project, task, created_at) VALUES (?, ?, ?, ?, ?)",
+              (button_id, task_id, project, task, int(time.time())))
+    conn.commit()
+
     keyboard = [
         [
-            InlineKeyboardButton("✅ Сегодня сделаю!", callback_data=f"work:{task_id}:{current_time}"),
-            InlineKeyboardButton("⏰ Напомни завтра", callback_data=f"later:{task_id}:{current_time}")
+            InlineKeyboardButton("✅ Сегодня сделаю!", callback_data=f"work:{button_id}"),
+            InlineKeyboardButton("⏰ Напомни завтра", callback_data=f"later:{button_id}")
         ],
         [
-            InlineKeyboardButton("📅 Напомни через неделю", callback_data=f"tomorrow:{task_id}:{current_time}"),
-            InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh:{task_id}:{current_time}")
+            InlineKeyboardButton("📅 Напомнить через неделю", callback_data=f"tomorrow:{button_id}"),
+            InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh:{button_id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup, parse_mode='Markdown')
+
+    conn.close()
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
@@ -195,24 +208,26 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    try:
-        await query.answer()
-    except telegram.error.BadRequest as e:
-        if "Query is too old" in str(e):
-            await update.effective_message.edit_text("Это сообщение устарело. Пожалуйста, используйте кнопку 'Обновить'.")
-            return
-        else:
-            raise
+    await query.answer()
 
-    action, task_id, _ = query.data.split(':')
-    task_id = int(task_id)
+    action, button_id = query.data.split(':', 1)
 
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
 
+    c.execute("SELECT task_id, project, task FROM button_states WHERE button_id = ?", (button_id,))
+    result = c.fetchone()
+
+    if result is None:
+        await query.edit_message_text("Это напоминание устарело. Пожалуйста, дождитесь следующего.")
+        conn.close()
+        return
+
+    task_id, project, task = result
+
     if action == "work":
-        c.execute("SELECT interval, project, task FROM tasks WHERE id = ?", (task_id,))
-        interval, project, task = c.fetchone()
+        c.execute("SELECT interval FROM tasks WHERE id = ?", (task_id,))
+        interval = c.fetchone()[0]
         next_reminder = datetime.now() + timedelta(seconds=interval)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
@@ -237,8 +252,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче через неделю.")
     elif action == "refresh":
-        c.execute("SELECT project, task FROM tasks WHERE id = ?", (task_id,))
-        project, task = c.fetchone()
         await send_reminder_with_buttons(context, query.message.chat_id, project, task, task_id)
         await query.message.delete()
 
@@ -247,15 +260,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
-    if isinstance(context.error, telegram.error.BadRequest) and "Query is too old" in str(context.error):
-        if update.callback_query:
-            update.callback_query.answer()
-            update.effective_message.reply_text("Это сообщение устарело. Пожалуйста, используйте кнопку 'Обновить'.")
 
 def main() -> None:
     init_db()
 
-    application = Application.builder().token(BOT_TOKEN).arbitrary_callback_data(True).build()
+    application = Application.builder().token(BOT_TOKEN).build()
 
     # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
     conv_handler = ConversationHandler(
