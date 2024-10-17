@@ -31,6 +31,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
+
 # ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
     try:
@@ -44,6 +45,7 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
+
 # ЗАГРУЗКА ЗАДАЧ
 def load_tasks():
     try:
@@ -56,6 +58,7 @@ def load_tasks():
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
 
+
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 def init_db():
     conn = sqlite3.connect('tasks.db')
@@ -63,23 +66,24 @@ def init_db():
 
     c.execute("DROP TABLE IF EXISTS tasks")
     c.execute("DROP TABLE IF EXISTS sent_reminders")
-    c.execute("DROP TABLE IF EXISTS button_states")
+    c.execute("DROP TABLE IF EXISTS button_data")
 
     c.execute('''CREATE TABLE tasks
                  (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
     c.execute('''CREATE TABLE sent_reminders
                  (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
-    c.execute('''CREATE TABLE button_states
+    c.execute('''CREATE TABLE button_data
                  (button_id TEXT PRIMARY KEY, task_id INTEGER, project TEXT, task TEXT, created_at INTEGER)''')
 
     # Добавление индексов для оптимизации запросов
     c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
     c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
-    c.execute("CREATE INDEX idx_button_states_created_at ON button_states(created_at)")
+    c.execute("CREATE INDEX idx_button_data_created_at ON button_data(created_at)")
 
     conn.commit()
     conn.close()
     logger.info("База данных инициализирована")
+
 
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
 def init_tasks_for_specialist(specialist):
@@ -98,6 +102,7 @@ def init_tasks_for_specialist(specialist):
     conn.close()
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
+
 # ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
@@ -114,6 +119,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
+
 
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -143,12 +149,14 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
         return ConversationHandler.END
 
-async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str, task_id: int) -> None:
+
+async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str,
+                                     task_id: int) -> None:
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
 
     button_id = f"{task_id}:{int(time.time())}"
-    c.execute("INSERT INTO button_states (button_id, task_id, project, task, created_at) VALUES (?, ?, ?, ?, ?)",
+    c.execute("INSERT INTO button_data (button_id, task_id, project, task, created_at) VALUES (?, ?, ?, ?, ?)",
               (button_id, task_id, project, task, int(time.time())))
     conn.commit()
 
@@ -163,9 +171,11 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup, parse_mode='Markdown')
+    await context.bot.send_message(chat_id=chat_id, text=f"Проект: {project}\n*{task}*", reply_markup=reply_markup,
+                                   parse_mode='Markdown')
 
     conn.close()
+
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
@@ -206,16 +216,17 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     # Асинхронная отправка напоминаний
     await asyncio.gather(*[send_reminder_with_buttons(context, *reminder) for reminder in reminders])
 
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
 
-    action, button_id = query.data.split(':', 1)
+    action, button_id = query.data.split(':')
 
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
 
-    c.execute("SELECT task_id, project, task FROM button_states WHERE button_id = ?", (button_id,))
+    c.execute("SELECT task_id, project, task FROM button_data WHERE button_id = ?", (button_id,))
     result = c.fetchone()
 
     if result is None:
@@ -258,8 +269,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.commit()
     conn.close()
 
+
+async def clean_old_button_data(context: ContextTypes.DEFAULT_TYPE) -> None:
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+
+    # Удаляем данные кнопок старше 48 часов
+    c.execute("DELETE FROM button_data WHERE created_at < ?", (int(time.time()) - 48 * 3600,))
+
+    conn.commit()
+    conn.close()
+
+
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
+    if isinstance(context.error, telegram.error.BadRequest) and "Query is too old" in str(context.error):
+        if update.callback_query:
+            update.callback_query.answer()
+            update.effective_message.reply_text("Это сообщение устарело. Пожалуйста, дождитесь следующего напоминания.")
+
 
 def main() -> None:
     init_db()
@@ -279,6 +307,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_error_handler(error_handler)
 
+    # Добавляем периодическую очистку данных кнопок
+    application.job_queue.run_repeating(clean_old_button_data, interval=timedelta(hours=24))
+
     # ЗАПУСК БОТА
     if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
         port = int(os.environ.get('PORT', 10000))
@@ -290,6 +321,7 @@ def main() -> None:
         )
     else:
         application.run_polling()
+
 
 if __name__ == '__main__':
     main()
