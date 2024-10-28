@@ -15,22 +15,23 @@ import asyncio
 
 warnings.filterwarnings("ignore", category=PTBUserWarning)
 
-# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# Загрузка переменных окружения
 load_dotenv()
 
-# НАСТРОЙКА ЛОГИРОВАНИЯ
+# Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# СОСТОЯНИЯ ДЛЯ CONVERSATIONHANDLER
+# Состояния для ConversationHandler
 CHOOSING_SPECIALIST = range(1)
 
-# ПОЛУЧЕНИЕ КОНФИДЕНЦИАЛЬНЫХ ДАННЫХ ИЗ .ENV
+# Получение конфиденциальных данных из .env
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
-# ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
+
+# Загрузка специалистов и их проектов
 def load_specialists():
     try:
         with open(SPECIALISTS_FILE, 'r', encoding='utf-8') as file:
@@ -43,7 +44,8 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
-# ЗАГРУЗКА ЗАДАЧ
+
+# Загрузка задач
 def load_tasks():
     try:
         with open(TASKS_FILE, 'r', encoding='utf-8') as file:
@@ -55,7 +57,8 @@ def load_tasks():
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
 
-# ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
+
+# Инициализация базы данных
 def init_db():
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
@@ -80,7 +83,8 @@ def init_db():
     conn.close()
     logger.info("База данных инициализирована")
 
-# ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
+
+# Инициализация задач для конкретного специалиста
 def init_tasks_for_specialist(specialist):
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
@@ -97,7 +101,8 @@ def init_tasks_for_specialist(specialist):
     conn.close()
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
-# ОБРАБОТЧИКИ КОМАНД
+
+# Обработчики команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
         "Привет! 😊\nТебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
@@ -114,6 +119,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
 
+
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -129,10 +135,10 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
         await query.edit_message_text(f"*ВАШИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
 
-        # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ ВЫБРАННОГО СПЕЦИАЛИСТА
+        # Инициализация задач для выбранного специалиста
         init_tasks_for_specialist(specialist)
 
-        # ЗАПУСК ПРОВЕРКИ НАПОМИНАНИЙ
+        # Запуск проверки напоминаний
         context.job_queue.run_repeating(check_reminders, interval=1800, first=1,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id,
                                               'surname': specialist['surname']})
@@ -141,6 +147,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     else:
         await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
         return ConversationHandler.END
+
 
 async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str,
                                      task_id: int) -> None:
@@ -163,6 +170,7 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
                                    parse_mode='Markdown')
 
     conn.close()
+
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
@@ -203,6 +211,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     # Асинхронная отправка напоминаний
     await asyncio.gather(*[send_reminder_with_buttons(context, *reminder) for reminder in reminders])
 
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -227,7 +236,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
         await query.edit_message_text(text=f"✅ Отлично! Закройте задачу сегодня.")
 
-        # ЗАПИСЬ В GOOGLE SHEETS
+        # Запись в Google Sheets
         try:
             surname = context.user_data.get('surname', 'Неизвестный')
             quickstart.write_to_sheet([[surname, project, task, datetime.now().strftime('%d.%m')]])
@@ -244,6 +253,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn.commit()
     conn.close()
 
+
 async def clean_old_button_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
@@ -254,6 +264,7 @@ async def clean_old_button_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     conn.commit()
     conn.close()
 
+
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
     if isinstance(context.error, telegram.error.BadRequest) and "Query is too old" in str(context.error):
@@ -263,12 +274,13 @@ def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif update:
         update.message.reply_text("Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз.")
 
+
 def main() -> None:
     init_db()
 
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
+    # Инициализация обработчиков
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -284,8 +296,9 @@ def main() -> None:
     # Добавляем периодическую очистку данных кнопок
     application.job_queue.run_repeating(clean_old_button_data, interval=timedelta(hours=24))
 
-    # ЗАПУСК БОТА
+    # Запуск бота
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
