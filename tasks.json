@@ -13,7 +13,7 @@
     {
       "project": "HEADLINER",
       "task": "Проверить статус работы кампаний на автостратегии",
-      "interval_seconds": 8500
+      "interval_seconds": 12500
     }
   ]
 }
