@@ -2,8 +2,7 @@ import logging
 import json
 import os
 import time
-
-import telegram as telegram
+import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
 import sqlite3
@@ -31,7 +30,6 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
-
 # ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
     try:
@@ -45,7 +43,6 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
-
 # ЗАГРУЗКА ЗАДАЧ
 def load_tasks():
     try:
@@ -57,7 +54,6 @@ def load_tasks():
     except json.JSONDecodeError:
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
-
 
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 def init_db():
@@ -84,7 +80,6 @@ def init_db():
     conn.close()
     logger.info("База данных инициализирована")
 
-
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
 def init_tasks_for_specialist(specialist):
     conn = sqlite3.connect('tasks.db')
@@ -102,7 +97,6 @@ def init_tasks_for_specialist(specialist):
     conn.close()
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
-
 # ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
@@ -119,7 +113,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
-
 
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -149,7 +142,6 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
         return ConversationHandler.END
 
-
 async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, project: str, task: str,
                                      task_id: int) -> None:
     conn = sqlite3.connect('tasks.db')
@@ -164,10 +156,6 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
         [
             InlineKeyboardButton("✅ Сегодня сделаю!", callback_data=f"work:{button_id}"),
             InlineKeyboardButton("⏰ Напомни завтра", callback_data=f"later:{button_id}")
-        ],
-        [
-            InlineKeyboardButton("📅 Напомнить через неделю", callback_data=f"tomorrow:{button_id}"),
-            InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh:{button_id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -175,7 +163,6 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
                                    parse_mode='Markdown')
 
     conn.close()
-
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
@@ -216,7 +203,6 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     # Асинхронная отправка напоминаний
     await asyncio.gather(*[send_reminder_with_buttons(context, *reminder) for reminder in reminders])
 
-
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -239,7 +225,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         next_reminder = datetime.now() + timedelta(seconds=interval)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"✅ Отлично! Вы решили сделать задачу сегодня.")
+        await query.edit_message_text(text=f"✅ Отлично! Закройте задачу сегодня.")
 
         # ЗАПИСЬ В GOOGLE SHEETS
         try:
@@ -253,21 +239,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         next_reminder = datetime.now() + timedelta(days=1)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"⏳ Хорошо, я напомню вам об этой задаче завтра.")
-    elif action == "tomorrow":
-        next_reminder = datetime.now() + timedelta(weeks=1)
-        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
-        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче через неделю.")
-    elif action == "refresh":
-        c.execute("SELECT project, task FROM tasks WHERE id = ?", (task_id,))
-        project, task = c.fetchone()
-        await send_reminder_with_buttons(context, query.message.chat_id, project, task, task_id)
-        await query.message.delete()
+        await query.edit_message_text(text=f"⏳ Хорошо, я напомню завтра.")
 
     conn.commit()
     conn.close()
-
 
 async def clean_old_button_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = sqlite3.connect('tasks.db')
@@ -278,7 +253,6 @@ async def clean_old_button_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     conn.commit()
     conn.close()
-
 
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
@@ -311,17 +285,7 @@ def main() -> None:
     application.job_queue.run_repeating(clean_old_button_data, interval=timedelta(hours=24))
 
     # ЗАПУСК БОТА
-    if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
-        port = int(os.environ.get('PORT', 10000))
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            webhook_url=os.environ.get("WEBHOOK_URL"),
-            secret_token=os.environ.get("SECRET_TOKEN")
-        )
-    else:
-        application.run_polling()
-
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
