@@ -2,7 +2,8 @@ import logging
 import json
 import os
 import time
-import telegram
+
+import telegram as telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
 import sqlite3
@@ -15,23 +16,23 @@ import asyncio
 
 warnings.filterwarnings("ignore", category=PTBUserWarning)
 
-# Загрузка переменных окружения
+# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 load_dotenv()
 
-# Настройка логирования
+# НАСТРОЙКА ЛОГИРОВАНИЯ
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Состояния для ConversationHandler
+# СОСТОЯНИЯ ДЛЯ CONVERSATIONHANDLER
 CHOOSING_SPECIALIST = range(1)
 
-# Получение конфиденциальных данных из .env
+# ПОЛУЧЕНИЕ КОНФИДЕНЦИАЛЬНЫХ ДАННЫХ ИЗ .ENV
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
 
-# Загрузка специалистов и их проектов
+# ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
 def load_specialists():
     try:
         with open(SPECIALISTS_FILE, 'r', encoding='utf-8') as file:
@@ -45,7 +46,7 @@ def load_specialists():
         return []
 
 
-# Загрузка задач
+# ЗАГРУЗКА ЗАДАЧ
 def load_tasks():
     try:
         with open(TASKS_FILE, 'r', encoding='utf-8') as file:
@@ -58,7 +59,7 @@ def load_tasks():
         return []
 
 
-# Инициализация базы данных
+# ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 def init_db():
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
@@ -84,7 +85,7 @@ def init_db():
     logger.info("База данных инициализирована")
 
 
-# Инициализация задач для конкретного специалиста
+# ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
 def init_tasks_for_specialist(specialist):
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
@@ -102,7 +103,7 @@ def init_tasks_for_specialist(specialist):
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
 
-# Обработчики команд
+# ОБРАБОТЧИКИ КОМАНД
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
         "Привет! 😊\nТебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
@@ -135,11 +136,11 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
         await query.edit_message_text(f"*ВАШИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
 
-        # Инициализация задач для выбранного специалиста
+        # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ ВЫБРАННОГО СПЕЦИАЛИСТА
         init_tasks_for_specialist(specialist)
 
-        # Запуск проверки напоминаний
-        context.job_queue.run_repeating(check_reminders, interval=1800, first=1,
+        # ЗАПУСК ПРОВЕРКИ НАПОМИНАНИЙ
+        context.job_queue.run_repeating(check_reminders, interval=10, first=1,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id,
                                               'surname': specialist['surname']})
 
@@ -163,6 +164,10 @@ async def send_reminder_with_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id
         [
             InlineKeyboardButton("✅ Сегодня сделаю!", callback_data=f"work:{button_id}"),
             InlineKeyboardButton("⏰ Напомни завтра", callback_data=f"later:{button_id}")
+        ],
+        [
+            InlineKeyboardButton("📅 Напомнить через неделю", callback_data=f"tomorrow:{button_id}"),
+            InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh:{button_id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -234,9 +239,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         next_reminder = datetime.now() + timedelta(seconds=interval)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"✅ Отлично! Закройте задачу сегодня.")
+        await query.edit_message_text(text=f"✅ Отлично! Вы решили сделать задачу сегодня.")
 
-        # Запись в Google Sheets
+        # ЗАПИСЬ В GOOGLE SHEETS
         try:
             surname = context.user_data.get('surname', 'Неизвестный')
             quickstart.write_to_sheet([[surname, project, task, datetime.now().strftime('%d.%m')]])
@@ -248,7 +253,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         next_reminder = datetime.now() + timedelta(days=1)
         c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
-        await query.edit_message_text(text=f"⏳ Хорошо, я напомню завтра.")
+        await query.edit_message_text(text=f"⏳ Хорошо, я напомню вам об этой задаче завтра.")
+    elif action == "tomorrow":
+        next_reminder = datetime.now() + timedelta(weeks=1)
+        c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
+        c.execute("UPDATE sent_reminders SET responded = 1 WHERE task_id = ?", (task_id,))
+        await query.edit_message_text(text=f"📅 Понял, напомню вам об этой задаче через неделю.")
+    elif action == "refresh":
+        c.execute("SELECT project, task FROM tasks WHERE id = ?", (task_id,))
+        project, task = c.fetchone()
+        await send_reminder_with_buttons(context, query.message.chat_id, project, task, task_id)
+        await query.message.delete()
 
     conn.commit()
     conn.close()
@@ -274,13 +289,12 @@ def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif update:
         update.message.reply_text("Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз.")
 
-
 def main() -> None:
     init_db()
 
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Инициализация обработчиков
+    # ИНИЦИАЛИЗАЦИЯ ОБРАБОТЧИКОВ
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -296,8 +310,17 @@ def main() -> None:
     # Добавляем периодическую очистку данных кнопок
     application.job_queue.run_repeating(clean_old_button_data, interval=timedelta(hours=24))
 
-    # Запуск бота
-    application.run_polling()
+    # ЗАПУСК БОТА
+    if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
+        port = int(os.environ.get('PORT', 10000))
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=os.environ.get("WEBHOOK_URL"),
+            secret_token=os.environ.get("SECRET_TOKEN")
+        )
+    else:
+        application.run_polling()
 
 
 if __name__ == '__main__':
