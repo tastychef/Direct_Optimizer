@@ -6,6 +6,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -37,12 +38,19 @@ def get_credentials():
             raise ValueError("Invalid credentials. Please update GOOGLE_TOKEN in .env file.")
     return creds
 
-def write_to_sheet(values):
+def write_to_sheet(specialist, status, date_on=None, date_off=None):
     try:
         creds = get_credentials()
         logger.info("Credentials получены успешно")
         service = build('sheets', 'v4', credentials=creds)
         logger.info("Сервис Google Sheets создан")
+
+        values = [[
+            specialist,
+            status,
+            date_on.strftime("%d.%m.%Y") if date_on else "",
+            date_off.strftime("%d.%m.%Y") if date_off else ""
+        ]]
 
         body = {
             'values': values
@@ -59,12 +67,11 @@ def write_to_sheet(values):
         logger.error(f"Произошла ошибка при записи в таблицу: {error}")
         return error
 
-
 if __name__ == '__main__':
     # Пример использования
-    test_data = [['Тестовая запись', 'Проект', 'Задача', '01.01.2023']]
-    result = write_to_sheet(test_data)
-    if isinstance(result, dict):
+    current_time = datetime.now()
+    test_data = write_to_sheet("Иванов", "Отключен", current_time, current_time)
+    if isinstance(test_data, dict):
         print("Данные успешно записаны в таблицу")
     else:
         print("Произошла ошибка при записи данных")
