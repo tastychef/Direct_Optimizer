@@ -3,12 +3,14 @@
     {
       "project": "Первый нагатинский",
       "task": "Почистить поисковые запросы",
-      "interval_seconds": 5
+      "interval_seconds": 10,
+      "reminder_time": "11:00"
     },
     {
       "project": "ТАТЕ",
       "task": "Почистить сетевые площадки",
-      "interval_seconds": 15
+      "interval_seconds": 30,
+      "reminder_time": "11:00"
     }
   ]
 }
