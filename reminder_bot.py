@@ -1,6 +1,5 @@
 import logging
 import json
-import os
 import telegram
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
@@ -9,6 +8,8 @@ from datetime import datetime, timedelta, time
 from dotenv import load_dotenv
 import warnings
 import quickstart
+import os
+from telegram.ext import Application
 
 warnings.filterwarnings("ignore", category=telegram.warnings.PTBUserWarning)
 
@@ -220,7 +221,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     init_db()
+
+    # Получаем порт из переменной окружения или используем 10000 по умолчанию
+    port = int(os.environ.get('PORT', 10000))
+
+    # Получаем URL для веб-хука и секретный токен из переменных окружения
+    webhook_url = os.environ.get("WEBHOOK_URL")
+    secret_token = os.environ.get("SECRET_TOKEN")
+
     application = Application.builder().token(BOT_TOKEN).build()
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -230,7 +240,14 @@ def main() -> None:
     )
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
-    application.run_polling()
+
+    # Настраиваем и запускаем веб-хук
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        webhook_url=webhook_url,
+        secret_token=secret_token
+    )
 
 
 if __name__ == '__main__':
