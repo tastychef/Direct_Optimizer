@@ -1,5 +1,6 @@
 import logging
 import json
+import os
 import telegram
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, CallbackQueryHandler
@@ -8,8 +9,6 @@ from datetime import datetime, timedelta, time
 from dotenv import load_dotenv
 import warnings
 import quickstart
-import os
-from telegram.ext import Application
 
 warnings.filterwarnings("ignore", category=telegram.warnings.PTBUserWarning)
 
@@ -29,9 +28,8 @@ SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
 # Временные ограничения для отправки напоминаний
-START_TIME = time(5, 0)  # 11:00
-END_TIME = time(19, 0)  # 18:00
-
+START_TIME = time(5, 0)  # 5:00
+END_TIME = time(19, 0)  # 19:00
 
 # Загрузка специалистов и их проектов
 def load_specialists():
@@ -46,7 +44,6 @@ def load_specialists():
         logger.error(f"Ошибка при разборе JSON в файле {SPECIALISTS_FILE}.")
         return []
 
-
 # Загрузка задач
 def load_tasks():
     try:
@@ -59,7 +56,6 @@ def load_tasks():
         logger.error(f"Ошибка при разборе JSON в файле {TASKS_FILE}.")
         return []
 
-
 # Инициализация базы данных
 def init_db():
     with sqlite3.connect('tasks.db') as conn:
@@ -67,17 +63,13 @@ def init_db():
         c.execute("DROP TABLE IF EXISTS tasks")
         c.execute("DROP TABLE IF EXISTS sent_reminders")
         c.execute("DROP TABLE IF EXISTS users")
-        c.execute('''CREATE TABLE tasks
-                     (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
-        c.execute('''CREATE TABLE sent_reminders
-                     (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
-        c.execute('''CREATE TABLE users
-                     (id INTEGER PRIMARY KEY, surname TEXT, status TEXT, last_update TEXT)''')
+        c.execute('''CREATE TABLE tasks (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
+        c.execute('''CREATE TABLE sent_reminders (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
+        c.execute('''CREATE TABLE users (id INTEGER PRIMARY KEY, surname TEXT, status TEXT, last_update TEXT)''')
         c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
         c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
         c.execute("CREATE INDEX idx_users_status ON users(status)")
     logger.info("База данных инициализирована")
-
 
 # Инициализация задач для конкретного специалиста
 def init_tasks_for_specialist(specialist):
@@ -90,7 +82,6 @@ def init_tasks_for_specialist(specialist):
                 c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
                           (project, task['task'], task['interval_seconds'], next_reminder.isoformat()))
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
-
 
 # Обновление статуса пользователя
 def update_user_status(user_id, surname, status):
@@ -106,8 +97,7 @@ def update_user_status(user_id, surname, status):
                 quickstart.write_to_sheet(surname, status, None, now)
             else:
                 quickstart.write_to_sheet(surname, status, now, None)
-            logger.info(f"Статус пользователя {surname} обновлен: {status}")
-
+    logger.info(f"Статус пользователя {surname} обновлен: {status}")
 
 # Обработчики команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -125,7 +115,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Пожалуйста, выберите вашу фамилию:', reply_markup=reply_markup)
     return CHOOSING_SPECIALIST
 
-
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -140,10 +129,9 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         init_tasks_for_specialist(specialist)
         context.job_queue.run_repeating(
             check_reminders,
-            interval=3610,  # Проверка каждые 30 секунд
+            interval=3610,  # Проверка каждый час
             first=1,
-            data={'projects': specialist['projects'], 'chat_id': query.message.chat_id,
-                  'surname': specialist['surname']},
+            data={'projects': specialist['projects'], 'chat_id': query.message.chat_id, 'surname': specialist['surname']},
             name=str(query.message.chat_id)
         )
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
@@ -151,7 +139,6 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     else:
         await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
         return ConversationHandler.END
-
 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list) -> None:
     message = f"*📋{task.upper()}*\n"
@@ -166,18 +153,15 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: 
         quickstart.write_to_sheet(surname, "Отключен", None, block_time)
         stop_reminders(context, chat_id)
 
-
 def stop_reminders(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
     for job in current_jobs:
         job.schedule_removal()
     logger.info(f"Проверка напоминаний остановлена для пользователя {chat_id}")
 
-
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
     current_time = now.time()
-
     if START_TIME <= current_time <= END_TIME:
         logger.info(f"Проверка напоминаний в {now}")
         with sqlite3.connect('tasks.db') as conn:
@@ -186,27 +170,22 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
             placeholders = ','.join('?' for _ in projects)
             c.execute(f"""
                 SELECT t.id, t.project, t.task, t.interval
-                FROM tasks t 
+                FROM tasks t
                 WHERE t.next_reminder <= ? AND t.project IN ({placeholders})
-                """, (now.isoformat(), *projects))
+            """, (now.isoformat(), *projects))
             tasks = c.fetchall()
-
-            logger.info(f"Найдено задач для напоминания: {len(tasks)}")
-
-            reminders = {}
-            for task_id, project, task, interval in tasks:
-                if task not in reminders:
-                    reminders[task] = {"projects": set(), "interval": interval}
-                reminders[task]["projects"].add(project)
-
-                next_reminder = now + timedelta(seconds=interval)
-                c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
-
+        logger.info(f"Найдено задач для напоминания: {len(tasks)}")
+        reminders = {}
+        for task_id, project, task, interval in tasks:
+            if task not in reminders:
+                reminders[task] = {"projects": set(), "interval": interval}
+            reminders[task]["projects"].add(project)
+            next_reminder = now + timedelta(seconds=interval)
+            c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
         for task_name, data in reminders.items():
             await send_reminder(context, context.job.data['chat_id'], task_name, list(data["projects"]))
     else:
         logger.info(f"Текущее время {current_time} вне диапазона отправки напоминаний")
-
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Exception while handling an update: {context.error}")
@@ -218,17 +197,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             quickstart.write_to_sheet(surname, "Отключен", None, block_time)
             stop_reminders(context, update.effective_chat.id)
 
-
 def main() -> None:
     init_db()
-
-    # Получаем порт из переменной окружения или используем 10000 по умолчанию
-    port = int(os.environ.get('PORT', 10000))
-
-    # Получаем URL для веб-хука и секретный токен из переменных окружения
-    webhook_url = os.environ.get("WEBHOOK_URL")
-    secret_token = os.environ.get("SECRET_TOKEN")
-
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -238,17 +208,24 @@ def main() -> None:
         },
         fallbacks=[],
     )
+
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
-    # Настраиваем и запускаем веб-хук
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        webhook_url=webhook_url,
-        secret_token=secret_token
-    )
-
+    if os.environ.get('RENDER'):
+        # Код для запуска на Render
+        port = int(os.environ.get('PORT', 10000))
+        webhook_url = os.environ.get("WEBHOOK_URL")
+        secret_token = os.environ.get("SECRET_TOKEN")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=webhook_url,
+            secret_token=secret_token
+        )
+    else:
+        # Код для локального запуска
+        application.run_polling()
 
 if __name__ == '__main__':
     main()
