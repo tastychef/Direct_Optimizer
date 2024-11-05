@@ -63,14 +63,31 @@ def init_db():
         c.execute("DROP TABLE IF EXISTS tasks")
         c.execute("DROP TABLE IF EXISTS sent_reminders")
         c.execute("DROP TABLE IF EXISTS users")
-        c.execute(
-            '''CREATE TABLE tasks (id INTEGER PRIMARY KEY, project TEXT, task TEXT, interval INTEGER, next_reminder TEXT)''')
-        c.execute('''CREATE TABLE sent_reminders (task_id INTEGER PRIMARY KEY, sent_at TEXT, responded BOOLEAN)''')
-        c.execute('''CREATE TABLE users (id INTEGER PRIMARY KEY, surname TEXT, status TEXT, last_update TEXT)''')
+        c.execute('''
+            CREATE TABLE tasks (
+                id INTEGER PRIMARY KEY,
+                project TEXT,
+                task TEXT,
+                interval INTEGER,
+                next_reminder TEXT)
+        ''')
+        c.execute('''
+            CREATE TABLE sent_reminders (
+                task_id INTEGER PRIMARY KEY,
+                sent_at TEXT,
+                responded BOOLEAN)
+        ''')
+        c.execute('''
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                surname TEXT,
+                status TEXT,
+                last_update TEXT)
+        ''')
         c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
         c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
         c.execute("CREATE INDEX idx_users_status ON users(status)")
-    logger.info("База данных инициализирована")
+        logger.info("База данных инициализирована")
 
 
 # Инициализация задач для конкретного специалиста
@@ -93,11 +110,9 @@ def update_user_status(user_id, surname, status):
         c = conn.cursor()
         c.execute("SELECT status FROM users WHERE id = ?", (user_id,))
         old_status = c.fetchone()
-
         if old_status is None or old_status[0] != status:
             c.execute("INSERT OR REPLACE INTO users (id, surname, status, last_update) VALUES (?, ?, ?, ?)",
                       (user_id, surname, status, now.isoformat()))
-
             # Обновление в Google Sheets
             date_on = now if status == "Подключен" else None
             date_off = now if status == "Отключен" else None
@@ -107,7 +122,6 @@ def update_user_status(user_id, surname, status):
                 logger.info(f"Статус пользователя {surname} обновлен в Google Sheets: {status}")
             except Exception as e:
                 logger.error(f"Ошибка при обновлении статуса в Google Sheets: {e}")
-
     logger.info(f"Статус пользователя {surname} обновлен: {status}")
 
 
@@ -139,23 +153,16 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.user_data['projects'] = specialist['projects']
 
         project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
-
         await query.edit_message_text(f"*ВАШИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
 
         init_tasks_for_specialist(specialist)
 
-        context.job_queue.run_repeating(
-            check_reminders,
-            interval=30,
-            first=1,
-            data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
-            name=str(query.message.chat_id)
-        )
+        context.job_queue.run_repeating(check_reminders, interval=30, first=1,
+                                        data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
+                                        name=str(query.message.chat_id))
 
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
-        return ConversationHandler.END
 
-    await query.edit_message_text('Произошла ошибка. Пожалуйста, напишите @LEX_126.')
     return ConversationHandler.END
 
 
@@ -233,6 +240,7 @@ def main() -> None:
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get("WEBHOOK_URL")
+
         application.run_webhook(listen="0.0.0.0", port=port, webhook_url=webhook_url)
     else:
         application.run_polling()
