@@ -214,7 +214,9 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 # ОСНОВНАЯ ФУНКЦИЯ
 def main() -> None:
     init_db()
+
     application = Application.builder().token(BOT_TOKEN).build()
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -222,12 +224,18 @@ def main() -> None:
         },
         fallbacks=[],
     )
+
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
-        application.run_webhook(listen="0.0.0.0", port=port, webhook_url=os.environ.get("WEBHOOK_URL"))
+        webhook_url = os.environ.get("WEBHOOK_URL")
+        secret_token = os.environ.get("SECRET_TOKEN")
+
+        application.run_webhook(listen="0.0.0.0", port=port,
+                                webhook_url=webhook_url,
+                                secret_token=secret_token)
     else:
         application.run_polling()
 
