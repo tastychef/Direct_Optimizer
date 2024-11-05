@@ -238,7 +238,7 @@ def main() -> None:
     application.add_error_handler(error_handler)
 
     if os.environ.get('RENDER'):
-        port = int(os.environ.get('PORT', 8432))
+        port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get("WEBHOOK_URL")
 
         application.run_webhook(listen="0.0.0.0", port=port, webhook_url=webhook_url)
