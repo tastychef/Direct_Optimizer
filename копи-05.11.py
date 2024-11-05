@@ -12,27 +12,27 @@ from quickstart import update_sheet_row
 
 warnings.filterwarnings("ignore", category=telegram.warnings.PTBUserWarning)
 
-# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# Загрузка переменных окружения
 load_dotenv()
 
-# НАСТРОЙКА ЛОГИРОВАНИЯ
+# Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# СОСТОЯНИЯ ДЛЯ CONVERSATIONHANDLER
+# Состояния для ConversationHandler
 CHOOSING_SPECIALIST = range(1)
 
-# ПОЛУЧЕНИЕ КОНФИДЕНЦИАЛЬНЫХ ДАННЫХ ИЗ .ENV
+# Получение конфиденциальных данных из .env
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
-# ВРЕМЕННЫЕ ОГРАНИЧЕНИЯ ДЛЯ ОТПРАВКИ НАПОМИНАНИЙ
+# Временные ограничения для отправки напоминаний
 START_TIME = time(4, 0)  # 4:00
 END_TIME = time(21, 0)  # 21:00
 
 
-# ЗАГРУЗКА СПЕЦИАЛИСТОВ И ИХ ПРОЕКТОВ
+# Загрузка специалистов и их проектов
 def load_specialists():
     try:
         with open(SPECIALISTS_FILE, 'r', encoding='utf-8') as file:
@@ -46,7 +46,7 @@ def load_specialists():
         return []
 
 
-# ЗАГРУЗКА ЗАДАЧ
+# Загрузка задач
 def load_tasks():
     try:
         with open(TASKS_FILE, 'r', encoding='utf-8') as file:
@@ -59,7 +59,7 @@ def load_tasks():
         return []
 
 
-# ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
+# Инициализация базы данных
 def init_db():
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
@@ -76,20 +76,20 @@ def init_db():
     logger.info("База данных инициализирована")
 
 
-# ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ КОНКРЕТНОГО СПЕЦИАЛИСТА
+# Инициализация задач для конкретного специалиста
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = datetime.now() + timedelta(minutes=task['interval_minutes'])
+                next_reminder = datetime.now() + timedelta(seconds=task['interval_seconds'])
                 c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                          (project, task['task'], task['interval_minutes'], next_reminder.isoformat()))
+                          (project, task['task'], task['interval_seconds'], next_reminder.isoformat()))
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
 
-# ОБНОВЛЕНИЕ СТАТУСА ПОЛЬЗОВАТЕЛЯ
+# Обновление статуса пользователя
 def update_user_status(user_id, surname, status):
     now = datetime.now()
     with sqlite3.connect('tasks.db') as conn:
@@ -112,7 +112,7 @@ def update_user_status(user_id, surname, status):
     logger.info(f"Статус пользователя {surname} обновлен: {status}")
 
 
-# ОБРАБОТЧИКИ КОМАНД
+# Обработчики команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
         "Привет! 😊\nТебе на помощь спешит бот..."
@@ -140,7 +140,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         init_tasks_for_specialist(specialist)
         context.job_queue.run_repeating(
             check_reminders,
-            interval=30.01,
+            interval=11,
             first=1,
             data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
             name=str(query.message.chat_id)
@@ -175,7 +175,6 @@ async def handle_bot_blocked(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
             logger.error(f"Пользователь с chat_id {chat_id} не найден в базе данных")
 
 
-# ПРОВЕРКА НАПОМИНАНИЙ
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now()
     current_time = now.time()
@@ -197,7 +196,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
             if task not in reminders:
                 reminders[task] = {"projects": set(), "interval": interval}
             reminders[task]["projects"].add(project)
-            next_reminder = now + timedelta(minutes=interval)
+            next_reminder = now + timedelta(seconds=interval)
             with sqlite3.connect('tasks.db') as conn:
                 c = conn.cursor()
                 c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?", (next_reminder.isoformat(), task_id))
@@ -211,7 +210,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(f"Exception while handling an update: {context.error}")
 
 
-# ОСНОВНАЯ ФУНКЦИЯ
 def main() -> None:
     init_db()
     application = Application.builder().token(BOT_TOKEN).build()

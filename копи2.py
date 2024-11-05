@@ -27,7 +27,7 @@ SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 
 # Time constraints for reminders
-START_TIME = time(5, 0)  # 5:00 AM
+START_TIME = time(4, 0)  # 5:00 AM
 END_TIME = time(21, 0)  # 7:00 PM
 
 
