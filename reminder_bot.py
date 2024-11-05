@@ -157,7 +157,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         init_tasks_for_specialist(specialist)
 
-        context.job_queue.run_repeating(check_reminders, interval=30, first=1,
+        context.job_queue.run_repeating(check_reminders, interval=1.01, first=1,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
                                         name=str(query.message.chat_id))
 
