@@ -22,9 +22,13 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-
 START_TIME = time(4, 0)
 END_TIME = time(21, 0)
+
+MONTHS = {
+    1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля', 5: 'мая', 6: 'июня',
+    7: 'июля', 8: 'августа', 9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря'
+}
 
 
 def load_json_file(file_path):
@@ -56,25 +60,25 @@ def init_db():
         c.execute("DROP TABLE IF EXISTS sent_reminders")
         c.execute("DROP TABLE IF EXISTS users")
         c.execute('''
-            CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY,
-                project TEXT,
-                task TEXT,
-                interval INTEGER,
-                next_reminder TEXT)
+        CREATE TABLE tasks (
+            id INTEGER PRIMARY KEY,
+            project TEXT,
+            task TEXT,
+            interval INTEGER,
+            next_reminder TEXT)
         ''')
         c.execute('''
-            CREATE TABLE sent_reminders (
-                task_id INTEGER PRIMARY KEY,
-                sent_at TEXT,
-                responded BOOLEAN)
+        CREATE TABLE sent_reminders (
+            task_id INTEGER PRIMARY KEY,
+            sent_at TEXT,
+            responded BOOLEAN)
         ''')
         c.execute('''
-            CREATE TABLE users (
-                id INTEGER PRIMARY KEY,
-                surname TEXT,
-                status TEXT,
-                last_update TEXT)
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            surname TEXT,
+            status TEXT,
+            last_update TEXT)
         ''')
         c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
         c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
@@ -88,9 +92,9 @@ def init_tasks_for_specialist(specialist):
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = datetime.now() + timedelta(minutes=task['interval_minutes'])
+                next_reminder = datetime.now() + timedelta(days=task['interval_days'])
                 c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                          (project, task['task'], task['interval_minutes'], next_reminder.isoformat()))
+                          (project, task['task'], task['interval_days'], next_reminder.isoformat()))
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
 
@@ -103,7 +107,6 @@ def update_user_status(user_id, surname, status):
         if old_status is None or old_status[0] != status:
             c.execute("INSERT OR REPLACE INTO users (id, surname, status, last_update) VALUES (?, ?, ?, ?)",
                       (user_id, surname, status, now.isoformat()))
-
     date_on = now if status == "Подключен" else None
     date_off = now if status == "Отключен" else None
     try:
@@ -111,7 +114,6 @@ def update_user_status(user_id, surname, status):
         logger.info(f"Статус пользователя {surname} обновлен в Google Sheets: {status}")
     except Exception as e:
         logger.error(f"Ошибка при обновлении статуса в Google Sheets: {e}")
-
     logger.info(f"Статус пользователя {surname} обновлен: {status}")
 
 
@@ -132,24 +134,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def send_first_reminder(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
-
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
         c.execute(f"""
-            SELECT t.task, t.interval
-            FROM tasks t
-            WHERE t.project IN ({placeholders})
-            GROUP BY t.task
-            ORDER BY MIN(t.interval) ASC
-            LIMIT 1
+        SELECT t.task, t.interval FROM tasks t
+        WHERE t.project IN ({placeholders})
+        GROUP BY t.task
+        ORDER BY MIN(t.interval) ASC
+        LIMIT 1
         """, projects)
         task = c.fetchone()
-
     if task:
         task_name, interval = task
         await send_reminder(context, chat_id, task_name, projects, interval)
-        logger.info(f"Отправлено первое напоминание: {task_name}")
+    logger.info(f"Отправлено первое напоминание: {task_name}")
 
 
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -169,19 +168,21 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.job_queue.run_once(send_first_reminder, 5,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat_id})
 
-        # Запуск регулярных проверок
-        context.job_queue.run_repeating(check_reminders, interval=65, first=60,
+        # Запуск регулярных проверок (каждый день)
+        context.job_queue.run_repeating(check_reminders, interval=timedelta(days=1), first=60,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
                                         name=str(query.message.chat_id))
+
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
     return ConversationHandler.END
 
 
-async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list, interval: int) -> None:
+async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
+                        interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now() + timedelta(minutes=interval)
-    next_reminder_str = next_reminder.strftime("%H:%M")
-    message = f"*📋ПОРА {task.upper()}*\n{projects_list}\n*СЛЕДУЮЩИЙ РАЗ {next_reminder_str}*"
+    next_reminder = datetime.now() + timedelta(days=interval)
+    next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
+    message = f"*📋ПОРА {task.upper()}*\n{projects_list}\n*СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
     try:
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
     except telegram.error.Forbidden:
@@ -197,14 +198,11 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
             projects = context.job.data['projects']
             placeholders = ','.join('?' for _ in projects)
             c.execute(f"""
-                SELECT t.id, t.project, t.task, t.interval
-                FROM tasks t
-                WHERE t.next_reminder <= ? AND t.project IN ({placeholders})
+            SELECT t.id, t.project, t.task, t.interval FROM tasks t
+            WHERE t.next_reminder <= ? AND t.project IN ({placeholders})
             """, (now.isoformat(), *projects))
             tasks = c.fetchall()
-
         logger.info(f"Найдено задач для напоминания: {len(tasks)}")
-
         reminders = {}
         for task_id, project, task, interval in tasks:
             if task not in reminders:
@@ -215,8 +213,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         for task_name, reminder_data in reminders.items():
             await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
                                 reminder_data["interval"])
-
-            next_reminder_time = now + timedelta(minutes=reminder_data["interval"])
+            next_reminder_time = now + timedelta(days=reminder_data["interval"])
             with sqlite3.connect('tasks.db') as conn:
                 c = conn.cursor()
                 for task_id in reminder_data["ids"]:
@@ -234,7 +231,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def main() -> None:
     init_db()
     application = Application.builder().token(BOT_TOKEN).build()
-
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -242,7 +238,6 @@ def main() -> None:
         },
         fallbacks=[],
     )
-
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
