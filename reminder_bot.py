@@ -241,7 +241,12 @@ def main() -> None:
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get("WEBHOOK_URL")
 
-        application.run_webhook(listen="0.0.0.0", port=port, webhook_url=webhook_url)
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=webhook_url,
+            secret_token=os.environ.get("SECRET_TOKEN")
+        )
     else:
         application.run_polling()
 
