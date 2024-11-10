@@ -2,19 +2,19 @@
   "tasks": [
     {
       "task": "Проверить РК на остановку обучения",
-      "interval_days": 1
+      "interval_days": 4
     },
     {
       "task": "Оценить эффективность РК за неделю",
-      "interval_days": 1
+      "interval_days": 5
     },
     {
       "task": "Проверить интеграцию, формы и подмену на сайте",
-      "interval_days": 2
+      "interval_days": 5
     },
     {
       "task": "Почистить поисковые запросы",
-      "interval_days": 2
+      "interval_days": 10
     },
     {
       "task": "Проверить динамический пул номеров",
