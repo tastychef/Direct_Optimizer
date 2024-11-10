@@ -22,8 +22,8 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(4, 0)
-END_TIME = time(21, 0)
+START_TIME = time(10, 0)
+END_TIME = time(19, 0)
 
 MONTHS = {
     1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля', 5: 'мая', 6: 'июня',
@@ -119,8 +119,8 @@ def update_user_status(user_id, surname, status):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
-        "Привет! 😊\nТебе на помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
-        "без которой никак. 💪✨\n\n🗓️ Если нужно что-то изменить или добавить, дай знать! 🌟"
+        "ПРИВЕТ! 😊\nНа помощь спешит бот, который будет напоминать выполнять рутину по контексту, "
+        "💪✨\n\n🗓️ Если нужно что-то изменить или добавить, дай знать! 🌟"
     )
     await update.message.reply_text(welcome_message)
     specialists = load_specialists()
@@ -182,7 +182,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: 
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
     next_reminder = datetime.now() + timedelta(days=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
-    message = f"*📋ПОРА {task.upper()}*\n{projects_list}\n*СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
+    message = f"*📋ПОРА {task.upper()}*\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
     try:
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
     except telegram.error.Forbidden:
