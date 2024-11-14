@@ -20,7 +20,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(15, 20)
+START_TIME = time(15, 35)
 END_TIME = time(18, 0)
 
 MONTHS = {
