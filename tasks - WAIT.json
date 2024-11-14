@@ -2,59 +2,59 @@
   "tasks": [
     {
       "task": "Проверить РК на остановку обучения",
-      "interval_minutes": 1
+      "interval_days": 1
     },
     {
       "task": "Оценить эффективность РК за неделю",
-      "interval_minutes": 1
+      "interval_days": 1
     },
     {
       "task": "Проверить интеграцию, формы и подмену на сайте",
-      "interval_minutes": 2
+      "interval_days": 2
     },
     {
       "task": "Почистить поисковые запросы",
-      "interval_minutes": 2
+      "interval_days": 2
     },
     {
       "task": "Проверить динамический пул номеров",
-      "interval_minutes": 10
+      "interval_days": 10
     },
     {
       "task": "Проанализировать качество сетевого трафика",
-      "interval_minutes": 10
+      "interval_days": 10
     },
     {
       "task": "Почистить сетевые площадки (ДИРЕКТ)",
-      "interval_minutes": 10
+      "interval_days": 10
     },
     {
       "task": "Почистить сетевые площадки (МЕДИЙКА)",
-      "interval_minutes": 15
+      "interval_days": 15
     },
     {
       "task": "Провести аудит LITE",
-      "interval_minutes": 15
+      "interval_days": 15
     },
     {
       "task": "Актуализировать корректировки",
-      "interval_minutes": 30
+      "interval_days": 30
     },
     {
       "task": "Проанализировать бренд (качество, семантика, минуса)",
-      "interval_minutes": 30
+      "interval_days": 30
     },
     {
       "task": "Проверить библиотеку ретаргетинга",
-      "interval_minutes": 15
+      "interval_days": 15
     },
     {
       "task": "Проверить наличие промоакции в РК",
-      "interval_minutes": 15
+      "interval_days": 15
     },
         {
       "task": "Проверить наличие визитки в РК",
-      "interval_minutes": 15
+      "interval_days": 15
     }
   ]
 }
