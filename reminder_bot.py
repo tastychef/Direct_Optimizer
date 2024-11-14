@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, time
 from dotenv import load_dotenv
 import warnings
 from quickstart import update_sheet_row
+import pytz
 
 warnings.filterwarnings("ignore", category=telegram.warnings.PTBUserWarning)
 load_dotenv()
@@ -20,8 +21,9 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(15, 35)
+START_TIME = time(16, 2)
 END_TIME = time(18, 0)
+TIMEZONE = pytz.timezone('Europe/Moscow')
 
 MONTHS = {
     1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля', 5: 'мая', 6: 'июня',
@@ -90,7 +92,7 @@ def init_db():
 
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         for project in specialist['projects']:
@@ -102,7 +104,7 @@ def init_tasks_for_specialist(specialist):
 
 
 def update_user_status(user_id, surname, status):
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         c.execute("SELECT status FROM users WHERE id = ?", (user_id,))
@@ -186,10 +188,10 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now() + timedelta(minutes=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
 
-    message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
+    message = f"*📋ПОРА {task.upper()}*\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
 
     try:
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
@@ -198,7 +200,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: 
 
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
     if START_TIME <= now.time() <= END_TIME:
         logger.info(f"Проверка напоминаний в {now}")
         with sqlite3.connect('tasks.db') as conn:
@@ -234,7 +236,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                               (next_reminder_time.isoformat(), task_id))
                 conn.commit()
     else:
-        logger.info(f"Текущее время {now.time()} не соответствует времени отправки напоминаний (11:00-18:00)")
+        logger.info(f"Текущее время {now.time()} не соответствует времени отправки напоминаний (16:00-18:00)")
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -243,6 +245,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     init_db()
+    logger.info(f"Бот запущен. Текущее время: {datetime.now(TIMEZONE)}")
 
     application = Application.builder().token(BOT_TOKEN).build()
 
