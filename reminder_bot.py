@@ -20,7 +20,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(11, 0)
+START_TIME = time(15, 20)
 END_TIME = time(18, 0)
 
 MONTHS = {
@@ -189,7 +189,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: 
     next_reminder = datetime.now() + timedelta(minutes=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
 
-    message = f"*📋ПОРА {task.upper()}*\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
+    message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
 
     try:
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
