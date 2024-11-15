@@ -2,10 +2,10 @@
   "tasks": [
     {
       "task": "ЧИСТКА ПОИСКОВЫХ ЗАПРОСОВ",
-      "interval_minutes": 1
+      "interval_hours": 1
     },
     {
       "task": "СЕТЕВЫЕ ПЛОЩАДКИ",
-      "interval_minutes": 2
+      "interval_hours": 2
     }]
 }
