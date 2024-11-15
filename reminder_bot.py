@@ -200,7 +200,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat_id})
 
         # Запуск регулярных проверок (каждые 62 секунды)
-        context.job_queue.run_repeating(check_reminders, interval=3610, first=10,
+        context.job_queue.run_repeating(check_reminders, interval=45, first=10,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
                                         name=str(query.message.chat_id))
 
