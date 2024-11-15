@@ -99,9 +99,9 @@ def init_tasks_for_specialist(specialist):
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = now + timedelta(hours=task['interval_hours'])  # Изменено на часы
+                next_reminder = now + timedelta(minutes=task['interval_minutes'])  # Изменено на часы
                 c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                          (project, task['task'], task['interval_hours'], next_reminder.isoformat()))
+                          (project, task['task'], task['interval_minutes'], next_reminder.isoformat()))
 
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
@@ -171,8 +171,8 @@ async def send_first_reminder(context: ContextTypes.DEFAULT_TYPE):
         task = c.fetchone()
 
         if task:
-            task_name, interval_hours = task
-            await send_reminder(context, chat_id, task_name, projects, interval_hours)
+            task_name, interval_minutes = task
+            await send_reminder(context, chat_id, task_name, projects, interval_minutes)
             logger.info(f"Отправлено первое напоминание: {task_name}")
 
 
@@ -200,7 +200,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat_id})
 
         # Запуск регулярных проверок (каждые 62 секунды)
-        context.job_queue.run_repeating(check_reminders, interval=45, first=10,
+        context.job_queue.run_repeating(check_reminders, interval=49, first=10,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat_id},
                                         name=str(query.message.chat_id))
 
@@ -210,10 +210,10 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
-                        interval_hours: int) -> None:
+                        interval_minutes: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
 
-    next_reminder_time = datetime.now(TIMEZONE) + timedelta(hours=interval_hours)
+    next_reminder_time = datetime.now(TIMEZONE) + timedelta(minutes=interval_minutes)
     next_reminder_str = f"{next_reminder_time.day} {MONTHS[next_reminder_time.month]}"
 
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
@@ -272,11 +272,11 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 with sqlite3.connect('tasks.db') as conn:
                     c = conn.cursor()
                     c.execute("SELECT interval FROM tasks WHERE task=?", (task_name,))
-                    interval_hours_row = c.fetchone()
-                    if interval_hours_row is not None:
-                        interval_hours = interval_hours_row[0]
+                    interval_minutes_row = c.fetchone()
+                    if interval_minutes_row is not None:
+                        interval_minutes = interval_minutes_row[0]
                         await send_reminder(context, chat_id, task_name,
-                                            list(reminder_data["projects"]), interval_hours)
+                                            list(reminder_data["projects"]), interval_minutes)
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
