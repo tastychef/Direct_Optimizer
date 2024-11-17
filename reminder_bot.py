@@ -117,8 +117,8 @@ def get_interval_string(interval: int) -> str:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     welcome_message = (
-        "*ПРИВЕТ*! 😊\nНа помощь спешит бот, который будет напоминать выполнять рутину по контексту,\n"
-        "💪✨\n\n🗓️ Если нужно что-то изменить или добавить, в конце месяца соберу ОС! 🌟"
+        "ПРИВЕТ!" "😊\nНа помощь спешит бот, который будет напоминать выполнять рутину по контексту💪✨\n"
+        "\n🗓️ Если нужно что-то изменить или добавить, в конце месяца соберу ОС! 🌟"
     )
     await update.message.reply_text(welcome_message)
 
