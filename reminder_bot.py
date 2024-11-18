@@ -165,7 +165,7 @@ async def send_reminder_list(context: ContextTypes.DEFAULT_TYPE):
         tasks = c.fetchall()
     if tasks:
         message_lines = []
-        message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ*\n\n")
+        message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
         unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
         for task_name, (original_name, interval) in unique_tasks.items():
             task_name_upper = original_name.capitalize()
