@@ -8,7 +8,8 @@
         "Smart Garden",
         "ТАТЕ"
       ]
-    },{
+    },
+    {
       "surname": "Архаров",
       "projects": [
         "Дубровка"
@@ -23,7 +24,20 @@
         "EVER",
         "SET",
         "Symphony 34",
-        "Tekta.ru",
+        "Tekta",
+        "Twelve"
+      ]
+    },
+    {
+      "surname": "Кафтин",
+      "projects": [
+        "Air",
+        "Eniteo",
+        "ERA",
+        "EVER",
+        "SET",
+        "Symphony 34",
+        "Tekta",
         "Twelve"
       ]
     },
@@ -116,6 +130,13 @@
         "Метроном",
         "Первый Квартал",
         "Павелецкая сити"
+      ]
+    },
+    {
+      "surname": "Сусь",
+      "projects": [
+        "Александрия Таун",
+        "Регенбоген"
       ]
     },
     {
