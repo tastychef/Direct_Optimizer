@@ -23,7 +23,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(10, 0)
+START_TIME = time(4, 0)
 END_TIME = time(18, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -62,28 +62,28 @@ def init_db():
         c.execute("DROP TABLE IF EXISTS sent_reminders")
         c.execute("DROP TABLE IF EXISTS users")
         c.execute('''
-        CREATE TABLE tasks (
-            id INTEGER PRIMARY KEY,
-            project TEXT,
-            task TEXT,
-            interval INTEGER,
-            next_reminder TEXT
-        )
+            CREATE TABLE tasks (
+                id INTEGER PRIMARY KEY,
+                project TEXT,
+                task TEXT,
+                interval INTEGER,
+                next_reminder TEXT
+            )
         ''')
         c.execute('''
-        CREATE TABLE sent_reminders (
-            task_id INTEGER PRIMARY KEY,
-            sent_at TEXT,
-            responded BOOLEAN
-        )
+            CREATE TABLE sent_reminders (
+                task_id INTEGER PRIMARY KEY,
+                sent_at TEXT,
+                responded BOOLEAN
+            )
         ''')
         c.execute('''
-        CREATE TABLE users (
-            id INTEGER PRIMARY KEY,
-            surname TEXT,
-            status TEXT,
-            last_update TEXT
-        )
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                surname TEXT,
+                status TEXT,
+                last_update TEXT
+            )
         ''')
         c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
         c.execute("CREATE INDEX idx_sent_reminders_task_id ON sent_reminders(task_id)")
@@ -117,13 +117,13 @@ def update_user_status(user_id, surname, status):
                 "INSERT OR REPLACE INTO users (id, surname, status, last_update) VALUES (?, ?, ?, ?)",
                 (user_id, surname, status, now.isoformat())
             )
-            date_on = now if status == "Подключен" else None
-            date_off = now if status == "Отключен" else None
-            try:
-                update_sheet_row(surname, status, date_on=date_on, date_off=date_off)
-                logger.info(f"Статус пользователя {surname} обновлен в Google Sheets: {status}")
-            except Exception as e:
-                logger.error(f"Ошибка при обновлении статуса в Google Sheets: {e}")
+    date_on = now if status == "Подключен" else None
+    date_off = now if status == "Отключен" else None
+    try:
+        update_sheet_row(surname, status, date_on=date_on, date_off=date_off)
+        logger.info(f"Статус пользователя {surname} обновлен в Google Sheets: {status}")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении статуса в Google Sheets: {e}")
     logger.info(f"Статус пользователя {surname} обновлен: {status}")
 
 
@@ -158,9 +158,9 @@ async def send_reminder_list(context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
         c.execute(f"""
-        SELECT t.task, t.interval
-        FROM tasks t
-        WHERE t.project IN ({placeholders})
+            SELECT t.task, t.interval
+            FROM tasks t
+            WHERE t.project IN ({placeholders})
         """, projects)
         tasks = c.fetchall()
     if tasks:
@@ -183,11 +183,11 @@ async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
         c.execute(f"""
-        SELECT t.task, t.next_reminder, t.interval
-        FROM tasks t
-        WHERE t.project IN ({placeholders})
-        ORDER BY t.next_reminder ASC
-        LIMIT 1
+            SELECT t.task, t.next_reminder, t.interval
+            FROM tasks t
+            WHERE t.project IN ({placeholders})
+            ORDER BY t.next_reminder ASC
+            LIMIT 1
         """, projects)
         nearest_task = c.fetchone()
     if nearest_task:
@@ -217,10 +217,8 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
         await query.edit_message_text(f"*ТВОИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
         init_tasks_for_specialist(specialist)
-        # Отправка списка напоминаний через 10 секунд
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
-        # Запуск регулярных проверок каждые 48 секунд
         context.job_queue.run_repeating(check_reminders, interval=48, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
@@ -244,21 +242,31 @@ def is_weekday(date):
     return date.weekday() < 5  # 0-4 это понедельник-пятница
 
 
+async def weekend_update(context: ContextTypes.DEFAULT_TYPE) -> None:
+    now = datetime.now(TIMEZONE)
+    logger.info(f"Выполняется обновление выходного дня: {now}")
+    with sqlite3.connect('tasks.db') as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM tasks")
+        task_count = c.fetchone()[0]
+    logger.info(f"Количество задач в базе данных: {task_count}")
+
+
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now(TIMEZONE)
-    if START_TIME <= now.time() <= END_TIME and is_weekday(now):
-        logger.info(f"Проверка напоминаний в {now}")
-        with sqlite3.connect('tasks.db') as conn:
-            c = conn.cursor()
-            projects = context.job.data['projects']
-            placeholders = ','.join('?' for _ in projects)
-            c.execute(f"""
-                SELECT t.id, t.project, t.task, t.interval, t.next_reminder
-                FROM tasks t
-                WHERE t.next_reminder <= ? AND t.project IN ({placeholders})
-            """, (now.isoformat(), *projects))
-            tasks = c.fetchall()
-
+    if is_weekday(now):
+        if START_TIME <= now.time() <= END_TIME:
+            logger.info(f"Проверка напоминаний в {now}")
+            with sqlite3.connect('tasks.db') as conn:
+                c = conn.cursor()
+                projects = context.job.data['projects']
+                placeholders = ','.join('?' for _ in projects)
+                c.execute(f"""
+                    SELECT t.id, t.project, t.task, t.interval, t.next_reminder
+                    FROM tasks t
+                    WHERE t.next_reminder <= ? AND t.project IN ({placeholders})
+                """, (now.isoformat(), *projects))
+                tasks = c.fetchall()
             reminders = {}
             for task_id, project, task_name, interval, next_reminder in tasks:
                 next_reminder = datetime.fromisoformat(next_reminder)
@@ -267,7 +275,6 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 if task_name not in reminders:
                     reminders[task_name] = {"projects": set(), "interval": interval, "next_reminder": next_reminder}
                 reminders[task_name]["projects"].add(project)
-
             for task_name, reminder_data in reminders.items():
                 await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
                                     reminder_data["interval"])
@@ -275,9 +282,11 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                     ','.join(['?'] * len(reminder_data["projects"]))),
                     (reminder_data["next_reminder"].isoformat(), task_name, *reminder_data["projects"]))
             conn.commit()
+        else:
+            logger.info(
+                f"Текущее время {now.time()} не соответствует времени отправки напоминаний ({START_TIME}-{END_TIME})")
     else:
-        logger.info(
-            f"Текущее время {now.time()} не соответствует времени отправки напоминаний ({START_TIME}-{END_TIME}) или сегодня выходной")
+        await weekend_update(context)
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
