@@ -227,11 +227,6 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
 
-        # Отправка ближайшей задачи через 20 секунд
-        # В функции specialist_choice
-        context.job_queue.run_once(send_nearest_task, 20,
-                                   data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
-
         # Запуск регулярных проверок каждые 48 секунд
         context.job_queue.run_repeating(check_reminders, interval=48, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
