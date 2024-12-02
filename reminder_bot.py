@@ -245,7 +245,7 @@ def is_reminder_sent(task_id: int, conn: sqlite3.Connection) -> bool:
     if result:
         sent_at = datetime.fromisoformat(result[0])
         now = datetime.now(TIMEZONE)
-        return (now - sent_at).minutes < 1
+        return (now - sent_at).days < 1  # Проверка отправки за последние сутки
     return False
 
 
