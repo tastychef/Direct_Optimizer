@@ -23,7 +23,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(4, 0)
+START_TIME = time(6, 0)
 END_TIME = time(18, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -98,10 +98,10 @@ def init_tasks_for_specialist(specialist):
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = now + timedelta(minutes=task['interval_minutes'])
+                next_reminder = now + timedelta(days=task['interval_days'])
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                    (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
+                    (project, task['task'], task['interval_days'], next_reminder.isoformat())
                 )
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
@@ -117,13 +117,13 @@ def update_user_status(user_id, surname, status):
                 "INSERT OR REPLACE INTO users (id, surname, status, last_update) VALUES (?, ?, ?, ?)",
                 (user_id, surname, status, now.isoformat())
             )
-            date_on = now if status == "Подключен" else None
-            date_off = now if status == "Отключен" else None
-            try:
-                update_sheet_row(surname, status, date_on=date_on, date_off=date_off)
-                logger.info(f"Статус пользователя {surname} обновлен в Google Sheets: {status}")
-            except Exception as e:
-                logger.error(f"Ошибка при обновлении статуса в Google Sheets: {e}")
+    date_on = now if status == "Подключен" else None
+    date_off = now if status == "Отключен" else None
+    try:
+        update_sheet_row(surname, status, date_on=date_on, date_off=date_off)
+        logger.info(f"Статус пользователя {surname} обновлен в Google Sheets: {status}")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении статуса в Google Sheets: {e}")
     logger.info(f"Статус пользователя {surname} обновлен: {status}")
 
 
@@ -179,6 +179,7 @@ async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
     now = datetime.now(TIMEZONE)
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
@@ -190,16 +191,20 @@ async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
             LIMIT 1
         """, projects)
         nearest_task = c.fetchone()
+
     if nearest_task:
         task, next_reminder, interval = nearest_task
         next_reminder = datetime.fromisoformat(next_reminder)
         next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
+
         projects_list = "\n".join(f"- {project}" for project in sorted(projects))
+
         message = (
             f"*📋ПОРА {task.upper()}*\n\n"
             f"{projects_list}\n\n"
             f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
         )
+
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
     else:
         await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
@@ -217,11 +222,16 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
         await query.edit_message_text(f"*ТВОИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
         init_tasks_for_specialist(specialist)
+
+        # Отправка списка напоминаний через 10 секунд
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
+
+        # Запуск регулярных проверок каждые 48 секунд
         context.job_queue.run_repeating(check_reminders, interval=48, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
+
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
     return ConversationHandler.END
 
@@ -229,24 +239,13 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(days=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
     try:
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
     except telegram.error.Forbidden:
         logger.warning(f"Пользователь {chat_id} заблокировал бота")
-
-
-def is_reminder_sent(task_id: int, conn: sqlite3.Connection) -> bool:
-    c = conn.cursor()
-    c.execute("SELECT sent_at FROM sent_reminders WHERE task_id = ?", (task_id,))
-    result = c.fetchone()
-    if result:
-        sent_at = datetime.fromisoformat(result[0])
-        now = datetime.now(TIMEZONE)
-        return (now - sent_at).minutes < 1
-    return False
 
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -262,30 +261,25 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 SELECT t.id, t.project, t.task, t.interval
                 FROM tasks t
                 WHERE t.next_reminder <= ? AND t.project IN ({placeholders})
-                """,
-                (now.isoformat(), *projects)
+                """, (now.isoformat(), *projects)
             )
             tasks = c.fetchall()
-            logger.info(f"Найдено задач для напоминания: {len(tasks)}")
-
-            reminders = {}
-            for task_id, project, task_name, interval in tasks:
-                if not is_reminder_sent(task_id, conn):
-                    if task_name not in reminders:
-                        reminders[task_name] = {"projects": set(), "ids": [], "interval": interval}
-                    reminders[task_name]["projects"].add(project)
-                    reminders[task_name]["ids"].append(task_id)
-
-            for task_name, reminder_data in reminders.items():
-                await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
-                                    reminder_data["interval"])
-                next_reminder_time = now + timedelta(minutes=reminder_data["interval"])
-
+        logger.info(f"Найдено задач для напоминания: {len(tasks)}")
+        reminders = {}
+        for task_id, project, task_name, interval in tasks:
+            if task_name not in reminders:
+                reminders[task_name] = {"projects": set(), "ids": [], "interval": interval}
+            reminders[task_name]["projects"].add(project)
+            reminders[task_name]["ids"].append(task_id)
+        for task_name, reminder_data in reminders.items():
+            await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
+                                reminder_data["interval"])
+            next_reminder_time = now + timedelta(days=reminder_data["interval"])
+            with sqlite3.connect('tasks.db') as conn:
+                c = conn.cursor()
                 for task_id in reminder_data["ids"]:
                     c.execute("UPDATE tasks SET next_reminder = ? WHERE id = ?",
                               (next_reminder_time.isoformat(), task_id))
-                    c.execute("INSERT OR REPLACE INTO sent_reminders (task_id, sent_at, responded) VALUES (?, ?, ?)",
-                              (task_id, now.isoformat(), False))
                 conn.commit()
     else:
         logger.info(
@@ -317,6 +311,7 @@ def main() -> None:
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("stop", stop))
     application.add_error_handler(error_handler)
+
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get("WEBHOOK_URL")
