@@ -23,7 +23,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(4, 0)
+START_TIME = time(6, 0)
 END_TIME = time(18, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -129,11 +129,11 @@ def update_user_status(user_id, surname, status):
 
 def get_interval_string(interval: int) -> str:
     if interval == 1:
-        return "**1 день**"
+        return "**1 минута**"
     elif 2 <= interval <= 4:
-        return f"**{interval} дня**"
+        return f"**{interval} минуты**"
     else:
-        return f"**{interval} дней**"
+        return f"**{interval} минут**"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -245,7 +245,7 @@ def is_reminder_sent(task_id: int, conn: sqlite3.Connection) -> bool:
     if result:
         sent_at = datetime.fromisoformat(result[0])
         now = datetime.now(TIMEZONE)
-        return (now - sent_at).days < 1  # Проверка отправки за последние сутки
+        return (now - sent_at).total_seconds() / 60 < 1
     return False
 
 
@@ -317,6 +317,7 @@ def main() -> None:
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("stop", stop))
     application.add_error_handler(error_handler)
+
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get("WEBHOOK_URL")
