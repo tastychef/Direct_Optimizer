@@ -23,7 +23,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(6, 0)
+START_TIME = time(10, 0)
 END_TIME = time(18, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -98,10 +98,10 @@ def init_tasks_for_specialist(specialist):
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = now + timedelta(days=task['interval_days'])
+                next_reminder = now + timedelta(minutes=task['interval_minutes'])
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                    (project, task['task'], task['interval_days'], next_reminder.isoformat())
+                    (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
                 )
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
@@ -239,7 +239,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now(TIMEZONE) + timedelta(days=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
     try:
@@ -274,7 +274,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         for task_name, reminder_data in reminders.items():
             await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
                                 reminder_data["interval"])
-            next_reminder_time = now + timedelta(days=reminder_data["interval"])
+            next_reminder_time = now + timedelta(minutes=reminder_data["interval"])
             with sqlite3.connect('tasks.db') as conn:
                 c = conn.cursor()
                 for task_id in reminder_data["ids"]:
