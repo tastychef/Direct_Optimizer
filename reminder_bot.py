@@ -229,7 +229,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(days=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
     try:
