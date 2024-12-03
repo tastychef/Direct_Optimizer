@@ -24,7 +24,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
 START_TIME = time(9, 0)
-END_TIME = time(13, 0)
+END_TIME = time(19, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
 MONTHS = {
@@ -99,16 +99,19 @@ def init_db():
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
     now = datetime.now(TIMEZONE)
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
+                # Убедитесь, что вы используете правильный ключ для доступа к интервалу
                 next_reminder = now + timedelta(days=task['interval_days'])
                 next_reminder = get_next_workday(next_reminder)
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
                     (project, task['task'], task['interval_days'], next_reminder.isoformat())
                 )
+
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
 
