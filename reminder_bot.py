@@ -101,10 +101,10 @@ def init_tasks_for_specialist(specialist):
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = now + timedelta(minutes=task['interval_minutes'])
+                next_reminder = now + timedelta(hours=task['interval_hours'])
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                    (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
+                    (project, task['task'], task['interval_hours'], next_reminder.isoformat())
                 )
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
 
@@ -215,7 +215,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(hours=interval)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
     try:
@@ -259,7 +259,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                     reminder_data["interval"]
                 )
 
-                next_reminder_time = now + timedelta(minutes=reminder_data["interval"])
+                next_reminder_time = now + timedelta(hours=reminder_data["interval"])
                 with sqlite3.connect('tasks.db') as conn:
                     c = conn.cursor()
                     for task_id in reminder_data["ids"]:
@@ -292,7 +292,7 @@ async def recover_missed_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         for task_id, project, task_name, interval, next_reminder, user_id in missed_tasks:
             last_reminder = datetime.fromisoformat(next_reminder)
             while last_reminder < now:
-                last_reminder += timedelta(minutes=interval)
+                last_reminder += timedelta(hours=interval)
 
             c.execute(
                 "UPDATE tasks SET next_reminder = ? WHERE id = ?",

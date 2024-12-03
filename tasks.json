@@ -2,59 +2,59 @@
   "tasks": [
     {
       "task": "1 🔍",
-      "interval_minutes": 1
+      "interval_hours": 1
     },
     {
       "task": "2 📊",
-      "interval_minutes": 2
+      "interval_hours": 2
     },
     {
       "task": "3 🖥️",
-      "interval_minutes": 3
+      "interval_hours": 3
     },
     {
       "task": "4 📞",
-      "interval_minutes": 4
+      "interval_hours": 4
     },
     {
       "task": "5 🧹",
-      "interval_minutes": 11
+      "interval_hours": 11
     },
     {
       "task": "6 📈",
-      "interval_minutes": 11
+      "interval_hours": 11
     },
     {
       "task": "ПОЧИСТИТЬ СЕТЕВЫЕ ПЛОЩАДКИ (ДИРЕКТ) 🧼",
-      "interval_minutes": 12
+      "interval_hours": 12
     },
     {
       "task": "ПОЧИСТИТЬ СЕТЕВЫЕ ПЛОЩАДКИ (МЕДИЙКА) 🧽",
-      "interval_minutes": 15
+      "interval_hours": 15
     },
     {
       "task": "ПРОВЕСТИ АУДИТ LITE 🔎",
-      "interval_minutes": 15
+      "interval_hours": 15
     },
     {
       "task": "ПРОВЕРИТЬ БИБЛИОТЕКУ РЕТАРГЕТИНГА НА НАЛИЧИЕ НЕРАБОТАЮЩИХ СЕГМЕНТОВ 🎯",
-      "interval_minutes": 15
+      "interval_hours": 15
     },
     {
       "task": "ПРОВЕРИТЬ НАЛИЧИЕ ПРОМОАКЦИИ В РК 🏷️",
-      "interval_minutes": 15
+      "interval_hours": 15
     },
     {
       "task": "ПРОВЕРИТЬ НАЛИЧИЕ ВИЗИТКИ В РК 📇",
-      "interval_minutes": 16
+      "interval_hours": 16
     },
     {
       "task": "АКТУАЛИЗИРОВАТЬ КОРРЕКТИРОВКИ 🔄",
-      "interval_minutes": 30
+      "interval_hours": 30
     },
     {
       "task": "ПРОАНАЛИЗИРОВАТЬ БРЕНД (КАЧЕСТВО, СЕМАНТИКА, МИНУСА) 🔬",
-      "interval_minutes": 30
+      "interval_hours": 30
     }
   ]
 }
