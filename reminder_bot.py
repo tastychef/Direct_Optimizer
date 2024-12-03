@@ -23,8 +23,8 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(10, 0)
-END_TIME = time(18, 0)
+START_TIME = time(9, 0)
+END_TIME = time(13, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
 MONTHS = {
