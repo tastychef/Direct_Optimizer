@@ -202,7 +202,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         context.job_queue.run_repeating(
             check_reminders,
-            interval=1800,  # 30 минут
+            interval=60,  # 30 минут
             first=5,
             data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
             name=str(query.message.chat.id)
@@ -354,10 +354,10 @@ def main() -> None:
 
     # ДОБАВЛЕНИЕ ВОССТАНОВЛЕНИЯ ПРОПУЩЕННЫХ НАПОМИНАНИЙ
     application.job_queue.run_once(recover_missed_reminders, 1)
-    application.job_queue.run_repeating(recover_missed_reminders, interval=3600)
+    application.job_queue.run_repeating(recover_missed_reminders, interval=60)
 
     if os.environ.get('RENDER'):
-        port = int(os.environ.get('PORT', 10000))
+        port = int(os.environ.get('PORT', 8432))
         webhook_url = os.environ.get("WEBHOOK_URL")
         application.run_webhook(
             listen="0.0.0.0",
