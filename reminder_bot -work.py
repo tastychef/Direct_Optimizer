@@ -101,16 +101,16 @@ INITIAL_DELAY = 4  # Количество дней, которые должны 
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
     now = datetime.now(TIMEZONE)
-    initial_delay = timedelta(minutes=INITIAL_DELAY)
+    initial_delay = timedelta(days=INITIAL_DELAY)
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = now + initial_delay + timedelta(minutes=task['interval_minutes'])
+                next_reminder = now + initial_delay + timedelta(days=task['interval_days'])
                 next_reminder = get_next_workday(next_reminder)
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                    (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
+                    (project, task['task'], task['interval_days'], next_reminder.isoformat())
                 )
     logger.info(f"Задачи загружены для специалиста {specialist['surname']} с начальной задержкой {INITIAL_DELAY} дней")
 
@@ -155,7 +155,7 @@ def is_workday(date):
 # ПОЛУЧЕНИЕ СЛЕДУЮЩЕГО РАБОЧЕГО ДНЯ
 def get_next_workday(date):
     while not is_workday(date):
-        date += timedelta(minutes=1)
+        date += timedelta(days=1)
     return date
 
 
@@ -248,7 +248,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
         # Запуск регулярных проверок каждые 48 секунд
-        context.job_queue.run_repeating(check_reminders, interval=30, first=5,
+        context.job_queue.run_repeating(check_reminders, interval=1800, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
@@ -259,7 +259,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(days=interval)
     next_reminder = get_next_workday(next_reminder)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
@@ -297,7 +297,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         for task_name, reminder_data in reminders.items():
             await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
                                 reminder_data["interval"])
-            next_reminder_time = now + timedelta(minutes=reminder_data["interval"])
+            next_reminder_time = now + timedelta(days=reminder_data["interval"])
             next_reminder_time = get_next_workday(next_reminder_time)
             with sqlite3.connect('tasks.db') as conn:
                 c = conn.cursor()
