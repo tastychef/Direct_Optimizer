@@ -96,23 +96,24 @@ def init_db():
 
 
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ СПЕЦИАЛИСТА
-INITIAL_DELAY = 4  # Количество дней, которые должны "пройти" после первого запуска
-
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
     now = datetime.now(TIMEZONE)
-    initial_delay = timedelta(minutes=INITIAL_DELAY)
+    min_interval = min(task['interval_minutes'] for task in tasks)
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                next_reminder = now + initial_delay + timedelta(minutes=task['interval_minutes'])
+                minutes_passed = min_interval - (task['interval_minutes'] % min_interval)
+                next_reminder = now - timedelta(minutes=minutes_passed)
                 next_reminder = get_next_workday(next_reminder)
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
                     (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
                 )
-    logger.info(f"Задачи загружены для специалиста {specialist['surname']} с начальной задержкой {INITIAL_DELAY} дней")
+    logger.info(
+        f"Задачи загружены для специалиста {specialist['surname']} с учетом минимального интервала {min_interval} дней")
 
 
 # ОБНОВЛЕНИЕ СТАТУСА ПОЛЬЗОВАТЕЛЯ
