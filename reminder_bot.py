@@ -105,11 +105,11 @@ def init_tasks_for_specialist(specialist):
         for project in specialist['projects']:
             for task in tasks:
                 # Убедитесь, что вы используете правильный ключ для доступа к интервалу
-                next_reminder = now + timedelta(days=task['interval_days'])
+                next_reminder = now + timedelta(minutes=task['interval_minutes'])
                 next_reminder = get_next_workday(next_reminder)
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                    (project, task['task'], task['interval_days'], next_reminder.isoformat())
+                    (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
                 )
 
     logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
@@ -155,7 +155,7 @@ def is_workday(date):
 # ПОЛУЧЕНИЕ СЛЕДУЮЩЕГО РАБОЧЕГО ДНЯ
 def get_next_workday(date):
     while not is_workday(date):
-        date += timedelta(days=1)
+        date += timedelta(minutes=1)
     return date
 
 
@@ -259,7 +259,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, chat_id: int, task: str, projects: list,
                         interval: int) -> None:
     projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-    next_reminder = datetime.now(TIMEZONE) + timedelta(days=interval)
+    next_reminder = datetime.now(TIMEZONE) + timedelta(minutes=interval)
     next_reminder = get_next_workday(next_reminder)
     next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
     message = f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
@@ -297,7 +297,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         for task_name, reminder_data in reminders.items():
             await send_reminder(context, context.job.data['chat_id'], task_name, list(reminder_data["projects"]),
                                 reminder_data["interval"])
-            next_reminder_time = now + timedelta(days=reminder_data["interval"])
+            next_reminder_time = now + timedelta(minutes=reminder_data["interval"])
             next_reminder_time = get_next_workday(next_reminder_time)
             with sqlite3.connect('tasks.db') as conn:
                 c = conn.cursor()
