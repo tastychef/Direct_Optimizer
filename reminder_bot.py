@@ -23,7 +23,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(9, 0)
+START_TIME = time(10, 0)
 END_TIME = time(19, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -96,23 +96,23 @@ def init_db():
 
 
 # ИНИЦИАЛИЗАЦИЯ ЗАДАЧ ДЛЯ СПЕЦИАЛИСТА
+INITIAL_DELAY = 0  # Количество дней, которые должны "пройти" после первого запуска
+
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
     now = datetime.now(TIMEZONE)
-
+    initial_delay = timedelta(minutes=INITIAL_DELAY)
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         for project in specialist['projects']:
             for task in tasks:
-                # Убедитесь, что вы используете правильный ключ для доступа к интервалу
-                next_reminder = now + timedelta(minutes=task['interval_minutes'])
+                next_reminder = now + initial_delay + timedelta(minutes=task['interval_minutes'])
                 next_reminder = get_next_workday(next_reminder)
                 c.execute(
                     "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
                     (project, task['task'], task['interval_minutes'], next_reminder.isoformat())
                 )
-
-    logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
+    logger.info(f"Задачи загружены для специалиста {specialist['surname']} с начальной задержкой {INITIAL_DELAY} дней")
 
 
 # ОБНОВЛЕНИЕ СТАТУСА ПОЛЬЗОВАТЕЛЯ
@@ -248,7 +248,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
         # Запуск регулярных проверок каждые 48 секунд
-        context.job_queue.run_repeating(check_reminders, interval=58, first=5,
+        context.job_queue.run_repeating(check_reminders, interval=50, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
