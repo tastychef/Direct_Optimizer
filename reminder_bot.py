@@ -247,8 +247,10 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # Отправка списка напоминаний через 10 секунд
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
+        context.job_queue.run_once(send_nearest_task, 20,
+                                   data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
         # Запуск регулярных проверок каждые 48 секунд
-        context.job_queue.run_repeating(check_reminders, interval=58, first=5,
+        context.job_queue.run_repeating(check_reminders, interval=300, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
@@ -321,12 +323,15 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_surname = context.user_data.get('surname', 'Неизвестный пользователь')
     update_user_status(update.message.from_user.id, user_surname, "Отключен")
     await update.message.reply_text("Вы отключены от бота. Если захотите снова подключиться, просто напишите /start.")
-
+def ping_server(context: ContextTypes.DEFAULT_TYPE):
+    # Здесь можно выполнить любое действие, чтобы поддерживать активность
+    logger.info("Ping server to keep it alive")
 
 def main() -> None:
     init_db()
     logger.info(f"Бот запущен. Текущее время: {datetime.now(TIMEZONE)}")
     application = Application.builder().token(BOT_TOKEN).build()
+    application.job_queue.run_repeating(ping_server, interval=timedelta(minutes=10))
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
