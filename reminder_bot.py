@@ -178,60 +178,70 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 # ОТПРАВКА СПИСКА НАПОМИНАНИЙ
 async def send_reminder_list(context: ContextTypes.DEFAULT_TYPE):
-    # Проверка наличия необходимых данных
     if 'chat_id' not in context.job.data or 'projects' not in context.job.data:
         logger.error("Необходимые данные отсутствуют в контексте задачи.")
-        return
+        return  # Завершение функции при отсутствии данных
 
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
         c.execute(f""" SELECT t.task, t.interval FROM tasks t WHERE t.project IN ({placeholders}) """, projects)
         tasks = c.fetchall()
-        if tasks:
-            message_lines = []
-            message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
-            unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
-            for task_name, (original_name, interval) in unique_tasks.items():
-                task_name_upper = original_name.capitalize()
-                interval_string = get_interval_string(interval)
-                message_lines.append(f"• {task_name_upper} - {interval_string}\n")
-            message = "".join(message_lines)
-            await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+
+    if tasks:
+        message_lines = []
+        message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
+        unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
+
+        for task_name, (original_name, interval) in unique_tasks.items():
+            task_name_upper = original_name.capitalize()
+            interval_string = get_interval_string(interval)
+            message_lines.append(f"• {task_name_upper} - {interval_string}\n")
+
+        message = "".join(message_lines)
+        await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+    else:
+        await context.bot.send_message(chat_id=chat_id, text="У вас нет задач для напоминания.")
 
 
 # ОТПРАВКА БЛИЖАЙШЕЙ ЗАДАЧИ
 async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
-    # Проверка наличия необходимых данных
     if 'chat_id' not in context.job.data or 'projects' not in context.job.data:
         logger.error("Необходимые данные отсутствуют в контексте задачи.")
-        return
+        return  # Завершение функции при отсутствии данных
 
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
     now = datetime.now(TIMEZONE)
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
         c.execute(
             f""" SELECT t.task, t.next_reminder, t.interval FROM tasks t WHERE t.project IN ({placeholders}) ORDER BY t.next_reminder ASC LIMIT 1 """,
             projects)
+
         nearest_task = c.fetchone()
-        if nearest_task:
-            task, next_reminder, interval = nearest_task
-            next_reminder = datetime.fromisoformat(next_reminder)
-            next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
-            projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-            message = (
-                f"*📋ПОРА {task.upper()}*\n\n"
-                f"{projects_list}\n\n"
-                f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
-            )
-            await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
-        else:
-            await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
+
+    if nearest_task:
+        task, next_reminder, interval = nearest_task
+        next_reminder = datetime.fromisoformat(next_reminder)
+        next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
+
+        projects_list = "\n".join(f"- {project}" for project in sorted(projects))
+
+        message = (
+            f"*📋ПОРА {task.upper()}*\n\n"
+            f"{projects_list}\n\n"
+            f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
+        )
+
+        await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+    else:
+        await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
 
 
 # ВЫБОР СПЕЦИАЛИСТА
