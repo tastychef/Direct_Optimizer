@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import json
 import os
@@ -341,7 +340,7 @@ async def restore_user_sessions(application: Application) -> None:
     for user_id, surname, projects in active_users:
         application.job_queue.run_repeating(
             check_reminders,
-            interval=58,
+            interval=1800,
             first=5,
             data={'projects': projects, 'chat_id': user_id},
             name=str(user_id)
@@ -362,6 +361,7 @@ def main() -> None:
     logger.info(f"Бот запущен. Текущее время: {datetime.now(TIMEZONE)}")
 
     application = Application.builder().token(BOT_TOKEN).build()
+    application.job_queue.run_repeating(ping_server, interval=timedelta(minutes=10))
 
     # Добавляем обработчики
     conv_handler = ConversationHandler(
