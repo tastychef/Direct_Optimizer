@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import os
@@ -356,12 +357,13 @@ async def on_webhook_startup(application: Application) -> None:
     await restore_user_sessions(application)
 
 
-async def main() -> None:
+def main() -> None:
     init_db()
     logger.info(f"Бот запущен. Текущее время: {datetime.now(TIMEZONE)}")
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.job_queue.run_repeating(ping_server, interval=timedelta(minutes=10))
 
+    application = Application.builder().token(BOT_TOKEN).build()
+
+    # Добавляем обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -373,22 +375,23 @@ async def main() -> None:
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("stop", stop))
     application.add_error_handler(error_handler)
+
+    # Добавляем периодическую задачу
     application.job_queue.run_repeating(ping_server, interval=timedelta(minutes=10))
 
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
-        await on_webhook_startup(application)
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
             webhook_url=os.environ.get("WEBHOOK_URL"),
-            secret_token=os.environ.get("SECRET_TOKEN"),
+            secret_token=os.environ.get("SECRET_TOKEN")
         )
     else:
-        application.run_polling()
+        application.run_polling(drop_pending_updates=True)
 
 
 if __name__ == '__main__':
-    import asyncio
+    main()
 
-    asyncio.run(main())
+
