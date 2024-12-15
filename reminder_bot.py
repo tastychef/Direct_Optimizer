@@ -48,8 +48,11 @@ def load_json_file(file_path):
 # ЗАГРУЗКА СПЕЦИАЛИСТОВ
 def load_specialists():
     specialists_data = load_json_file(SPECIALISTS_FILE)
-    return sorted(specialists_data['specialists'],
-                  key=lambda x: x['surname']) if specialists_data and 'specialists' in specialists_data else []
+    if specialists_data and 'specialists' in specialists_data:
+        return sorted(specialists_data['specialists'], key=lambda x: x['surname'])
+    logger.error("Не удалось загрузить специалистов.")
+    return []  # Возвращаем пустой список вместо None
+
 
 
 # ЗАГРУЗКА ЗАДАЧ
@@ -218,69 +221,60 @@ async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
 
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
-
         placeholders = ','.join('?' for _ in projects)
-
         c.execute(
             f""" SELECT t.task, t.next_reminder, t.interval FROM tasks t WHERE t.project IN ({placeholders}) ORDER BY t.next_reminder ASC LIMIT 1 """,
             projects)
-
         nearest_task = c.fetchone()
 
-        if nearest_task:
-            task, next_reminder_str_isoformat, interval = nearest_task
-
-            next_reminder_str = f"{datetime.fromisoformat(next_reminder_str_isoformat).day} {MONTHS[datetime.fromisoformat(next_reminder_str_isoformat).month]}"
-            projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-
-            message = (
-                f"*📋ПОРА {task.upper()}*\n\n"
-                f"{projects_list}\n\n"
-                f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
-            )
-
-            await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
-
-        else:
+        if nearest_task is None:
             await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
+            return
+
+        task, next_reminder_str_isoformat, interval = nearest_task
+        next_reminder_str = f"{datetime.fromisoformat(next_reminder_str_isoformat).day} {MONTHS[datetime.fromisoformat(next_reminder_str_isoformat).month]}"
+        projects_list = "\n".join(f"- {project}" for project in sorted(projects))
+
+        message = (f"*📋ПОРА {task.upper()}*\n\n"
+                   f"{projects_list}\n\n"
+                   f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*")
+
+        await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
 
 
 # ВЫБОР СПЕЦИАЛИСТА
 async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-
     _, surname = query.data.split(':')
-
     specialists = load_specialists()
-
     specialist = next((s for s in specialists if s['surname'] == surname), None)
 
-    if specialist:
-        context.user_data['surname'] = specialist['surname']
-        context.user_data['projects'] = specialist['projects']
+    if specialist is None:
+        await query.edit_message_text("Специалист не найден.")
+        return ConversationHandler.END
 
-        project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
+    context.user_data['surname'] = specialist['surname']
+    context.user_data['projects'] = specialist['projects']
+    project_list = "\n".join([f"{i + 1}. {project}" for i, project in enumerate(specialist['projects'])])
+    await query.edit_message_text(f"*ТВОИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
 
-        await query.edit_message_text(f"*ТВОИ ПРОЕКТЫ:*\n{project_list}", parse_mode='Markdown')
+    init_tasks_for_specialist(specialist)
 
-        init_tasks_for_specialist(specialist)
+    # Отправка списка напоминаний через 10 секунд
+    context.job_queue.run_once(send_reminder_list, 10,
+                               data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
 
-        # Отправка списка напоминаний через 10 секунд
-        context.job_queue.run_once(send_reminder_list, 10,
-                                   data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
+    # Отправка ближайшей задачи через 20 секунд
+    context.job_queue.run_once(send_nearest_task, 20,
+                               data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
 
-        # Отправка ближайшей задачи через 20 секунд
-        context.job_queue.run_once(send_nearest_task, 20,
-                                   data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
+    # Запуск регулярных проверок каждые 300 секунд (5 минут)
+    context.job_queue.run_repeating(check_reminders, interval=300, first=5,
+                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
+                                    name=str(query.message.chat.id))
 
-        # Запуск регулярных проверок каждые 300 секунд (5 минут)
-        context.job_queue.run_repeating(check_reminders, interval=300, first=5,
-                                        data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
-                                        name=str(query.message.chat.id))
-
-        update_user_status(query.from_user.id, specialist['surname'], "Подключен")
-
+    update_user_status(query.from_user.id, specialist['surname'], "Подключен")
     return ConversationHandler.END
 
 
