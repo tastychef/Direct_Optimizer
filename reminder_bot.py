@@ -102,17 +102,21 @@ def init_db():
 def init_tasks_for_specialist(specialist):
     tasks = load_tasks()
     now = datetime.now(TIMEZONE)
-    with sqlite3.connect('tasks.db') as conn:
-        c = conn.cursor()
-        for project in specialist['projects']:
-            for task in tasks:
-                next_reminder = now + timedelta(days=task['interval_days'])
-                next_reminder = get_next_workday(next_reminder)
-                c.execute(
-                    "INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
-                    (project, task['task'], task['interval_days'], next_reminder.isoformat())
-                )
-    logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
+
+    try:
+        with sqlite3.connect('tasks.db') as conn:
+            c = conn.cursor()
+            for project in specialist['projects']:
+                for task in tasks:
+                    next_reminder = now + timedelta(days=task['interval_days'])
+                    next_reminder = get_next_workday(next_reminder)
+                    c.execute("INSERT INTO tasks (project, task, interval, next_reminder) VALUES (?, ?, ?, ?)",
+                              (project, task['task'], task['interval_days'], next_reminder.isoformat()))
+        logger.info(f"Задачи загружены для специалиста {specialist['surname']}")
+    except sqlite3.Error as e:
+        logger.error(f"Ошибка базы данных при инициализации задач для специалиста {specialist['surname']}: {e}")
+    except Exception as e:
+        logger.error(f"Общая ошибка при инициализации задач для специалиста {specialist['surname']}: {e}")
 
 
 # ОБНОВЛЕНИЕ СТАТУСА ПОЛЬЗОВАТЕЛЯ
@@ -188,28 +192,28 @@ async def send_reminder_list(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
 
-    with sqlite3.connect('tasks.db') as conn:
-        c = conn.cursor()
-
-        placeholders = ','.join('?' for _ in projects)
-
-        c.execute(f""" SELECT t.task, t.interval FROM tasks t WHERE t.project IN ({placeholders}) """, projects)
-
-        tasks = c.fetchall()
+    try:
+        with sqlite3.connect('tasks.db') as conn:
+            c = conn.cursor()
+            placeholders = ','.join('?' for _ in projects)
+            c.execute(f""" SELECT t.task, t.interval FROM tasks t WHERE t.project IN ({placeholders}) """, projects)
+            tasks = c.fetchall()
 
         if tasks:
-            message_lines = []
-            message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
-
+            message_lines = ["*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n"]
             unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
-
             for task_name, (original_name, interval) in unique_tasks.items():
                 task_name_upper = original_name.capitalize()
                 interval_string = get_interval_string(interval)
                 message_lines.append(f"• {task_name_upper} - {interval_string}\n")
-
             message = "".join(message_lines)
             await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+        else:
+            await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
+    except telegram.error.TelegramError as e:
+        logger.error(f"Ошибка при отправке списка напоминаний: {e}")
+    except Exception as e:
+        logger.error(f"Общая ошибка при отправке списка напоминаний: {e}")
 
 
 # ОТПРАВКА БЛИЖАЙШЕЙ ЗАДАЧИ
@@ -217,29 +221,28 @@ async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
 
-    now = datetime.now(TIMEZONE)
+    try:
+        now = datetime.now(TIMEZONE)
+        with sqlite3.connect('tasks.db') as conn:
+            c = conn.cursor()
+            placeholders = ','.join('?' for _ in projects)
+            c.execute(
+                f""" SELECT t.task, t.next_reminder, t.interval FROM tasks t WHERE t.project IN ({placeholders}) ORDER BY t.next_reminder ASC LIMIT 1 """,
+                projects)
+            nearest_task = c.fetchone()
 
-    with sqlite3.connect('tasks.db') as conn:
-        c = conn.cursor()
-        placeholders = ','.join('?' for _ in projects)
-        c.execute(
-            f""" SELECT t.task, t.next_reminder, t.interval FROM tasks t WHERE t.project IN ({placeholders}) ORDER BY t.next_reminder ASC LIMIT 1 """,
-            projects)
-        nearest_task = c.fetchone()
-
-        if nearest_task is None:
+        if nearest_task:
+            task, next_reminder_str_isoformat, interval = nearest_task
+            next_reminder_str = f"{datetime.fromisoformat(next_reminder_str_isoformat).day} {MONTHS[datetime.fromisoformat(next_reminder_str_isoformat).month]}"
+            projects_list = "\n".join(f"- {project}" for project in sorted(projects))
+            message = (f"*📋ПОРА {task.upper()}*\n\n{projects_list}\n\n*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*")
+            await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+        else:
             await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
-            return
-
-        task, next_reminder_str_isoformat, interval = nearest_task
-        next_reminder_str = f"{datetime.fromisoformat(next_reminder_str_isoformat).day} {MONTHS[datetime.fromisoformat(next_reminder_str_isoformat).month]}"
-        projects_list = "\n".join(f"- {project}" for project in sorted(projects))
-
-        message = (f"*📋ПОРА {task.upper()}*\n\n"
-                   f"{projects_list}\n\n"
-                   f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*")
-
-        await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+    except telegram.error.TelegramError as e:
+        logger.error(f"Ошибка при отправке ближайшей задачи: {e}")
+    except Exception as e:
+        logger.error(f"Общая ошибка при отправке ближайшей задачи: {e}")
 
 
 # ВЫБОР СПЕЦИАЛИСТА
