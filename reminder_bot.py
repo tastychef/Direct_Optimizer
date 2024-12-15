@@ -256,7 +256,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.job_queue.run_once(send_nearest_task, 20,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
         # Запуск регулярных проверок каждые 1800 секунд
-        context.job_queue.run_repeating(check_reminders, interval=1800, first=5,
+        context.job_queue.run_repeating(check_reminders, interval=300, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
