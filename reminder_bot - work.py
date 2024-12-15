@@ -86,7 +86,8 @@ def init_db():
                 id INTEGER PRIMARY KEY,
                 surname TEXT,
                 status TEXT,
-                last_update TEXT
+                last_update TEXT,
+                projects TEXT
             )
         ''')
         c.execute("CREATE INDEX idx_tasks_next_reminder ON tasks(next_reminder)")
@@ -177,55 +178,67 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 # ОТПРАВКА СПИСКА НАПОМИНАНИЙ
 async def send_reminder_list(context: ContextTypes.DEFAULT_TYPE):
+    if 'chat_id' not in context.job.data or 'projects' not in context.job.data:
+        logger.error("Необходимые данные отсутствуют в контексте задачи.")
+        return  # Завершение функции при отсутствии данных
+
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
-        c.execute(f"""
-            SELECT t.task, t.interval
-            FROM tasks t
-            WHERE t.project IN ({placeholders})
-        """, projects)
+        c.execute(f""" SELECT t.task, t.interval FROM tasks t WHERE t.project IN ({placeholders}) """, projects)
         tasks = c.fetchall()
+
     if tasks:
         message_lines = []
         message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
         unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
+
         for task_name, (original_name, interval) in unique_tasks.items():
             task_name_upper = original_name.capitalize()
             interval_string = get_interval_string(interval)
             message_lines.append(f"• {task_name_upper} - {interval_string}\n")
+
         message = "".join(message_lines)
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+    else:
+        await context.bot.send_message(chat_id=chat_id, text="У вас нет задач для напоминания.")
 
 
 # ОТПРАВКА БЛИЖАЙШЕЙ ЗАДАЧИ
 async def send_nearest_task(context: ContextTypes.DEFAULT_TYPE):
+    if 'chat_id' not in context.job.data or 'projects' not in context.job.data:
+        logger.error("Необходимые данные отсутствуют в контексте задачи.")
+        return  # Завершение функции при отсутствии данных
+
     chat_id = context.job.data['chat_id']
     projects = context.job.data['projects']
     now = datetime.now(TIMEZONE)
+
     with sqlite3.connect('tasks.db') as conn:
         c = conn.cursor()
         placeholders = ','.join('?' for _ in projects)
-        c.execute(f"""
-            SELECT t.task, t.next_reminder, t.interval
-            FROM tasks t
-            WHERE t.project IN ({placeholders})
-            ORDER BY t.next_reminder ASC
-            LIMIT 1
-        """, projects)
+        c.execute(
+            f""" SELECT t.task, t.next_reminder, t.interval FROM tasks t WHERE t.project IN ({placeholders}) ORDER BY t.next_reminder ASC LIMIT 1 """,
+            projects)
+
         nearest_task = c.fetchone()
+
     if nearest_task:
         task, next_reminder, interval = nearest_task
         next_reminder = datetime.fromisoformat(next_reminder)
         next_reminder_str = f"{next_reminder.day} {MONTHS[next_reminder.month]}"
+
         projects_list = "\n".join(f"- {project}" for project in sorted(projects))
+
         message = (
             f"*📋ПОРА {task.upper()}*\n\n"
             f"{projects_list}\n\n"
             f"*⏰СЛЕДУЮЩИЙ РАЗ НАПОМНЮ {next_reminder_str}*"
         )
+
         await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
     else:
         await context.bot.send_message(chat_id=chat_id, text="У вас нет запланированных задач.")
@@ -238,6 +251,9 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     _, surname = query.data.split(':')
     specialists = load_specialists()
     specialist = next((s for s in specialists if s['surname'] == surname), None)
+    if specialist is None:
+        await query.edit_message_text("Специалист не найден.", parse_mode='Markdown')
+        return CHOOSING_SPECIALIST
     if specialist:
         context.user_data['surname'] = specialist['surname']
         context.user_data['projects'] = specialist['projects']
@@ -247,10 +263,10 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # Отправка списка напоминаний через 10 секунд
         context.job_queue.run_once(send_reminder_list, 10,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
-        # Запуск регулярных проверок каждые 48 секунд
         context.job_queue.run_once(send_nearest_task, 20,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
-        context.job_queue.run_repeating(check_reminders, interval=120, first=5,
+        # Запуск регулярных проверок каждые 1800 секунд
+        context.job_queue.run_repeating(check_reminders, interval=300, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
@@ -325,11 +341,44 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Вы отключены от бота. Если захотите снова подключиться, просто напишите /start.")
 
 
+def ping_server(context: ContextTypes.DEFAULT_TYPE):
+    # Здесь можно выполнить любое действие, чтобы поддерживать активность
+    logger.info("Ping server to keep it alive")
+
+
+async def restore_user_sessions(application: Application) -> None:
+    with sqlite3.connect('tasks.db') as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, surname, projects FROM users WHERE status = 'Подключен'")
+        active_users = c.fetchall()
+
+    for user_id, surname, projects in active_users:
+        application.job_queue.run_repeating(
+            check_reminders,
+            interval=1800,
+            first=5,
+            data={'projects': projects, 'chat_id': user_id},
+            name=str(user_id)
+        )
+
+
+async def on_webhook_startup(application: Application) -> None:
+    await application.bot.delete_webhook()
+    await application.bot.set_webhook(
+        url=os.environ.get("WEBHOOK_URL"),
+        secret_token=os.environ.get("SECRET_TOKEN")
+    )
+    await restore_user_sessions(application)
+
+
 def main() -> None:
     init_db()
     logger.info(f"Бот запущен. Текущее время: {datetime.now(TIMEZONE)}")
-    application = Application.builder().token(BOT_TOKEN).build()
 
+    application = Application.builder().token(BOT_TOKEN).build()
+    application.job_queue.run_repeating(ping_server, interval=timedelta(minutes=10))
+
+    # Добавляем обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -342,17 +391,19 @@ def main() -> None:
     application.add_handler(CommandHandler("stop", stop))
     application.add_error_handler(error_handler)
 
+    # Добавляем периодическую задачу
+    application.job_queue.run_repeating(ping_server, interval=timedelta(minutes=10))
+
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
-        webhook_url = os.environ.get("WEBHOOK_URL")
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
-            webhook_url=webhook_url,
+            webhook_url=os.environ.get("WEBHOOK_URL"),
             secret_token=os.environ.get("SECRET_TOKEN")
         )
     else:
-        application.run_polling()
+        application.run_polling(drop_pending_updates=True)
 
 
 if __name__ == '__main__':
