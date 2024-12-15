@@ -356,7 +356,7 @@ async def on_webhook_startup(application: Application) -> None:
     await restore_user_sessions(application)
 
 
-def main() -> None:
+async def main() -> None:
     init_db()
     logger.info(f"Бот запущен. Текущее время: {datetime.now(TIMEZONE)}")
     application = Application.builder().token(BOT_TOKEN).build()
@@ -377,16 +377,18 @@ def main() -> None:
 
     if os.environ.get('RENDER'):
         port = int(os.environ.get('PORT', 10000))
+        await on_webhook_startup(application)
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
             webhook_url=os.environ.get("WEBHOOK_URL"),
             secret_token=os.environ.get("SECRET_TOKEN"),
-            on_startup=on_webhook_startup
         )
     else:
         application.run_polling()
 
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+
+    asyncio.run(main())
