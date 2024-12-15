@@ -191,32 +191,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 # ОТПРАВКА СПИСКА НАПОМИНАНИЙ...
 async def send_reminder_list(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.data['chat_id']
-    projects = context.job.data['projects']
+    try:
+        chat_id = context.job.data['chat_id']
+        projects = context.job.data['projects']
 
-    with sqlite3.connect('tasks.db') as conn:
-        c = conn.cursor()
+        if chat_id is None or projects is None:
+            logger.error("chat_id или projects равны None.")
+            return
 
-        placeholders = ','.join('?' for _ in projects)
+        with sqlite3.connect('tasks.db') as conn:
+            c = conn.cursor()
+            placeholders = ','.join('?' for _ in projects)
+            c.execute(f""" SELECT t.task, t.interval FROM tasks t WHERE t.project IN ({placeholders}) """, projects)
+            tasks = c.fetchall()
 
-        c.execute(f""" SELECT t.task, t.interval FROM tasks t WHERE t.project IN ({placeholders}) """, projects)
+            if tasks:
+                message_lines = []
+                message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
 
-        tasks = c.fetchall()
+                unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
+                for task_name, (original_name, interval) in unique_tasks.items():
+                    task_name_upper = original_name.capitalize()
+                    interval_string = get_interval_string(interval)
+                    message_lines.append(f"• {task_name_upper} - {interval_string}\n")
 
-        if tasks:
-            message_lines = []
-            message_lines.append("*СПИСОК ТВОИХ НАПОМИНАНИЙ и ГРАФИК ПРОВЕРКИ*\n\n")
-
-            unique_tasks = {task[0].lower(): (task[0], task[1]) for task in tasks}
-
-            for task_name, (original_name, interval) in unique_tasks.items():
-                task_name_upper = original_name.capitalize()
-                interval_string = get_interval_string(interval)
-                message_lines.append(f"• {task_name_upper} - {interval_string}\n")
-
-            message = "".join(message_lines)
-
-            await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+                message = "".join(message_lines)
+                await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Ошибка в send_reminder_list: {e}")
 
 
 # ОТПРАВКА БЛИЖАЙШЕЙ ЗАДАЧИ
@@ -288,7 +290,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
 
         # Запуск регулярных проверок каждые 58 секунд
-    context.job_queue.run_repeating(check_reminders, interval=58, first=5,
+    context.job_queue.run_repeating(check_reminders, interval=1800, first=5,
                                     data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                     name=str(query.message.chat.id))
 
