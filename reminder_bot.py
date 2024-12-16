@@ -23,7 +23,7 @@ CHOOSING_SPECIALIST = range(1)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 SPECIALISTS_FILE = os.getenv('SPECIALISTS_FILE', 'specialists.json')
 TASKS_FILE = os.getenv('TASKS_FILE', 'tasks.json')
-START_TIME = time(4, 0)
+START_TIME = time(10, 0)
 END_TIME = time(19, 0)
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
@@ -251,7 +251,7 @@ async def specialist_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.job_queue.run_once(send_nearest_task, 20,
                                    data={'projects': specialist['projects'], 'chat_id': query.message.chat.id})
         # Запуск регулярных проверок каждые 48 секунд
-        context.job_queue.run_repeating(check_reminders, interval=30, first=5,
+        context.job_queue.run_repeating(check_reminders, interval=300, first=5,
                                         data={'projects': specialist['projects'], 'chat_id': query.message.chat.id},
                                         name=str(query.message.chat.id))
         update_user_status(query.from_user.id, specialist['surname'], "Подключен")
